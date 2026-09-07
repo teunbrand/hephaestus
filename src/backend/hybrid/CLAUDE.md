@@ -26,6 +26,7 @@ The cost is one extra owned copy of the geometry per frame (`Op` clones paths an
 - **Bitmap color glyphs bypass the rasteriser's own strike path**, and that is not an optimisation — `glyph_bitmap.rs` exists because the upstream path is unusable here twice over. It reaches the GPU only through the glyph atlas, and the atlas takes no rotation or skew; the fallback for anything else is a `Pixmap` paint, which is the panic in the bullet above. Resolved as an image instead, a strike costs one atlas upload and survives any transform. It also stays one pick target rather than becoming one per coloured region — `tests/hybrid.rs::a_bitmap_color_glyph_picks_as_one_id` pins that.
 - **Masks are unreachable, deliberately.** `Scene::push_layer` panics on a mask layer, and our `push_layer` has no mask channel, so `None` is always passed.
 - **Scene dimensions are `u16`.** `MAX_DIMENSION` is the ceiling; `dimension()` reports anything past it as a `BackendError`.
+- **Layers rasterise through an intermediate texture, and it has its own cap.** A clip, group or blend needs one the size of its bounds, and a render wanting one larger than `LayersConfig::max_texture_size` fails outright rather than degrading — at the upstream default of 4096 px that is any frame wider than that with a clipped panel in it, which is every plot. `render_settings()` raises the cap to `MAX_TEXTURE_DIMENSION` and upstream clamps that to the device's own limit, so the ceiling is the hardware's. `tests/hybrid.rs::a_clip_layer_wider_than_the_rasteriser_default_renders` pins it.
 - **Blend coverage is complete.** All 16 `Mix` and 14 `Compose` variants are mapped upstream, a superset of what `backend/convert.rs` exposes, so no conversion entries are missing.
 
 ## Performance shape
@@ -71,7 +72,7 @@ Three things to read off it:
 
 There is no draw-count ceiling — no `MAX_DRAW_INFO_WORDS` analogue — because GPU buffers are sized to actual content (`create_strips_buffer(device, total_len)`) and grow as needed (`maybe_resize_alphas_tex`). `vello_hybrid::RenderError` has no geometry-capacity variant at all.
 
-The exception is the alpha texture, which holds per-pixel coverage for antialiased strips and is capped at `dim² × 16` bytes where `dim = min(device.max_texture_dimension_2d, 4096)`. 4096 is a vello constant, so better hardware does not raise it and a weak WebGL device reporting 2048 gets a quarter as much. Exceeding it trips an `assert!` — a **panic**, where the compute-shader backend silently blanked the frame. A pre-flight guard belongs here, and unlike the other backend's budget it can be exact: the CPU knows `alphas.len()` before it uploads. Not built yet.
+The exception is the alpha texture, which holds per-pixel coverage for antialiased strips. It is as wide as `device.max_texture_dimension_2d` and grows in height as coverage accumulates, up to the same dimension, so the cap is `dim² × 16` bytes — 4.3 GB where the adapter grants the 16384 `backend::device_limits` asks for, 67 MB on a weak WebGL device reporting 2048. Exceeding it trips an `assert!` — a **panic**, where the compute-shader backend silently blanked the frame. A pre-flight guard belongs here, and unlike the other backend's budget it can be exact: the CPU knows `alphas.len()` before it uploads. Not built yet.
 
 ## Dependency version quirks
 

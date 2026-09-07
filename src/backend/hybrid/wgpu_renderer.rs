@@ -11,7 +11,9 @@ use vello_hybrid::{
     RenderSize, RenderTargetConfig, Renderer as HRenderer, Resources, Scene, TextureBindings,
 };
 
-use super::{dimension, image_key, recorded_images, unpremultiply, HybridScene, Writer};
+use super::{
+    dimension, image_key, recorded_images, render_settings, unpremultiply, HybridScene, Writer,
+};
 use crate::backend::{BackendError, Renderer, WgpuRenderer};
 use crate::color::Color;
 use crate::geometry::Affine;
@@ -159,7 +161,7 @@ impl HybridRenderer {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("hephaestus.hybrid.device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_limits: crate::backend::device_limits(&adapter),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -221,13 +223,14 @@ impl HybridRenderer {
             return Ok(());
         }
         let (w16, h16) = (dimension(width)?, dimension(height)?);
-        let (renderer, resources) = HRenderer::new(
+        let (renderer, resources) = HRenderer::new_with(
             &self.device,
             &RenderTargetConfig {
                 format,
                 width,
                 height,
             },
+            render_settings(),
         );
         self.sized = Some(SizeBound {
             renderer,
@@ -338,11 +341,7 @@ impl HybridRenderer {
         format: wgpu::TextureFormat,
         encoder: &mut wgpu::CommandEncoder,
     ) -> Result<(), BackendError> {
-        if width == 0 || height == 0 {
-            return Err(BackendError::Other(
-                "cannot render a zero-sized frame".into(),
-            ));
-        }
+        crate::backend::check_frame_size(&self.device, width, height)?;
         self.ensure_sized(width, height, format)?;
         self.upload_images(encoder)?;
         self.replay(background, width, height);

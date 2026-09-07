@@ -22,9 +22,9 @@
 use std::collections::HashMap;
 
 use vello_common::paint::{ImageSource, PaintType};
-use vello_hybrid::{Resources, Scene};
+use vello_hybrid::{LayersConfig, MemorySettings, RenderSettings, Resources, Scene, SizeU16};
 
-use crate::backend::{convert, mesh, BackendError};
+use crate::backend::{convert, mesh, BackendError, MAX_TEXTURE_DIMENSION};
 use crate::blend::BlendMode;
 use crate::brush::{Brush, Image, Sampling};
 use crate::geometry::Affine;
@@ -50,6 +50,30 @@ pub use wgpu_renderer::HybridRenderer;
 ///
 /// `vello_hybrid::Scene` sizes itself in `u16`.
 pub const MAX_DIMENSION: u32 = u16::MAX as u32;
+
+/// Render settings whose intermediate layer textures may grow to the largest
+/// size the device supports, rather than stopping at the rasterizer's
+/// conservative default.
+///
+/// A clip, group or blend rasterizes through an intermediate texture, and
+/// `vello_hybrid` fails the whole render when one is wanted larger than
+/// `LayersConfig::max_texture_size` — 4096 px by default, which a frame wider
+/// than that reaches on its first clipped panel. The rasterizer clamps the
+/// value against the device's own limit, so asking for
+/// [`MAX_TEXTURE_DIMENSION`] asks for as much as the device gives.
+fn render_settings() -> RenderSettings {
+    let defaults = RenderSettings::default();
+    RenderSettings {
+        memory_settings: MemorySettings {
+            layers_config: LayersConfig {
+                max_texture_size: SizeU16::new(MAX_TEXTURE_DIMENSION as u16),
+                ..defaults.memory_settings.layers_config
+            },
+            ..defaults.memory_settings
+        },
+        ..defaults
+    }
+}
 
 // ---------- Scene ----------
 

@@ -166,6 +166,63 @@ fn a_clip_layer_confines_what_it_contains() {
     assert_eq!(px(&out, 75, 50), [0, 0, 255, 255], "outside the clip");
 }
 
+#[test]
+fn a_clip_layer_wider_than_the_rasteriser_default_renders() {
+    // A layer rasterises through an intermediate texture, whose size the
+    // rasteriser caps; the default cap is well below the pixel dimensions an
+    // export can ask for, so the backend raises it to the device's own limit.
+    const WIDE: u32 = 5000;
+    const SHORT: u32 = 64;
+
+    let mut r = HybridRenderer::new().expect("hybrid renderer init");
+    {
+        let scene = r.scene();
+        scene.push_layer(
+            hephaestus::blend::BlendMode::NORMAL,
+            1.0,
+            Affine::IDENTITY,
+            &Rect::new(0.0, 0.0, f64::from(WIDE), f64::from(SHORT)).to_path(0.1),
+        );
+        fill(
+            scene,
+            Rect::new(0.0, 0.0, f64::from(WIDE), f64::from(SHORT)),
+            [255, 0, 0],
+            PickId::Skip,
+        );
+        scene.pop_layer();
+    }
+    let mut out = vec![0u8; (WIDE * SHORT * 4) as usize];
+    r.render_to_buffer(WIDE, SHORT, rgb8(0, 0, 255), &mut out)
+        .expect("render");
+
+    let i = ((SHORT / 2 * WIDE + WIDE - 1) * 4) as usize;
+    assert_eq!(
+        out[i..i + 4],
+        [255, 0, 0, 255],
+        "the clip's far edge is drawn"
+    );
+}
+
+#[test]
+fn a_frame_past_the_device_limit_is_an_error_rather_than_a_panic() {
+    // The device is opened with wgpu's defaults, so its texture ceiling is
+    // known: 8192. Past it the target texture would fail wgpu validation,
+    // which panics, so the size is checked before anything is allocated.
+    let (device, queue) = make_device();
+    let limit = device.limits().max_texture_dimension_2d;
+    let mut r = HybridRenderer::with_device(&device, &queue).expect("hybrid renderer init");
+
+    let (w, h) = (limit + 1, 8);
+    let mut out = vec![0u8; (w * h * 4) as usize];
+    let err = r
+        .render_to_buffer(w, h, rgb8(0, 0, 255), &mut out)
+        .expect_err("a frame past the device limit cannot be rendered");
+    assert!(
+        err.to_string().contains(&limit.to_string()),
+        "the error names the limit: {err}"
+    );
+}
+
 // ─── Meshes ─────────────────────────────────────────────────────────────────
 
 #[test]

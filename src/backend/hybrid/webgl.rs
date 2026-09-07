@@ -27,7 +27,7 @@ use vello_common::paint::ImageSource;
 use vello_hybrid::{Pixmap, RenderSize, Resources, Scene, WebGlRenderer, WebGlTextureBindings};
 use web_sys::HtmlCanvasElement;
 
-use super::{dimension, image_key, recorded_images, HybridScene, Writer};
+use super::{dimension, image_key, recorded_images, render_settings, HybridScene, Writer};
 use crate::backend::BackendError;
 use crate::color::Color;
 use crate::geometry::Affine;
@@ -59,7 +59,7 @@ impl HybridWebGlRenderer {
         picking: bool,
     ) -> Result<Self, BackendError> {
         let (w, h) = (dimension(width)?, dimension(height)?);
-        let (renderer, resources) = WebGlRenderer::new(canvas);
+        let (renderer, resources) = WebGlRenderer::new_with(canvas, render_settings());
         Ok(Self {
             renderer,
             resources,

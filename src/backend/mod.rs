@@ -34,6 +34,61 @@ pub mod pdf;
 #[cfg(any(feature = "svg", feature = "pdf"))]
 mod href;
 
+/// Largest 2D texture dimension this crate asks a device for, in pixels.
+///
+/// wgpu's default limit is 8192 and the sparse-strip rasterizer caps the
+/// intermediate textures it allocates for layers at 4096 unless told
+/// otherwise, both of which a print-resolution export passes. Asking for more
+/// lifts the ceiling to whatever the hardware reports, up to this; staying
+/// inside `u16` matters because that is what the rasterizer sizes those
+/// textures in.
+#[cfg(any(feature = "vello", feature = "vello-hybrid", feature = "webgl"))]
+pub const MAX_TEXTURE_DIMENSION: u32 = 16384;
+
+/// Default wgpu limits with the 2D texture dimension raised as far as
+/// `adapter` allows, up to [`MAX_TEXTURE_DIMENSION`].
+///
+/// Requesting more than an adapter reports fails device creation, so the ask
+/// is clamped to what it offers rather than fixed.
+#[cfg(any(feature = "vello", feature = "vello-hybrid"))]
+pub fn device_limits(adapter: &wgpu::Adapter) -> wgpu::Limits {
+    wgpu::Limits {
+        max_texture_dimension_2d: adapter
+            .limits()
+            .max_texture_dimension_2d
+            .min(MAX_TEXTURE_DIMENSION),
+        ..wgpu::Limits::default()
+    }
+}
+
+/// Reject a frame no texture on `device` could hold, before anything is
+/// allocated for it.
+///
+/// wgpu validates a texture's dimensions by panicking, and a rasterizing
+/// backend sizes its target from the frame, so both ends of the range are
+/// checked here and reported as an error instead: zero, which no texture can
+/// be, and past `max_texture_dimension_2d`, which is as much as this device
+/// grants — see [`device_limits`] for how much that is asked to be.
+#[cfg(any(feature = "vello", feature = "vello-hybrid"))]
+pub(crate) fn check_frame_size(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> Result<(), BackendError> {
+    if width == 0 || height == 0 {
+        return Err(BackendError::Other(
+            "cannot render a zero-sized frame".into(),
+        ));
+    }
+    let max = device.limits().max_texture_dimension_2d;
+    if width > max || height > max {
+        return Err(BackendError::Other(format!(
+            "frame {width}×{height} exceeds the {max} px this device's textures allow"
+        )));
+    }
+    Ok(())
+}
+
 /// Owns backend resources (GPU device, pipelines, etc.) and rasterizes a scene
 /// to an RGBA8 buffer.
 ///

@@ -318,7 +318,7 @@ impl VelloRenderer {
             .await
             .map_err(|_| BackendError::NoAdapter)?;
 
-        let limits = wgpu::Limits::default();
+        let limits = crate::backend::device_limits(&adapter);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("hephaestus.vello.device"),
@@ -414,6 +414,7 @@ impl Renderer for VelloRenderer {
             });
         }
         self.check_scene_budget()?;
+        crate::backend::check_frame_size(&self.device, width, height)?;
 
         self.ensure_display_target(width, height);
         let target = self.target.as_ref().unwrap();

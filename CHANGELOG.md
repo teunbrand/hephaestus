@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A frame wider or taller than 4096 px renders on the Hybrid backend.** The device is asked for `max_texture_dimension_2d` up to 16384 rather than wgpu's 8192 default, and the rasterizer's cap on intermediate layer textures is raised to match, so a clipped panel past 4096 px no longer fails the render; past a device's own limit — on either rasterizing backend — the frame is a `BackendError` rather than a wgpu panic.
 - **A document holding a polar plot reads back.** The decoder restores the projection before it attaches the axes, so a polar placement no longer panics against the not-yet-set Cartesian default; a placement that genuinely mismatches is reported as a `DocumentError` rather than panicking.
 
 ## 0.4.0

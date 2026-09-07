@@ -86,7 +86,7 @@ impl WindowSurface {
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("hephaestus.window.device"),
                 required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_limits: crate::backend::device_limits(&adapter),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,
                 experimental_features: wgpu::ExperimentalFeatures::default(),

@@ -270,6 +270,23 @@ jobs:
           cargo clippy --target wasm32-unknown-unknown --no-default-features \
             --features webfonts,wgpu-backend -- -D warnings
 
+      # The SVG client, which has no rasteriser at all: no wgpu, no
+      # vello_hybrid, no GL bindings. Checked on its own because it is the
+      # other combination a website actually ships, and because it is the one
+      # that breaks if the SVG backend or the document reader grows a
+      # dependency that is not wasm-clean.
+      - name: cargo clippy, the wasm SVG client
+        working-directory: crates/hephaestus-svg-wasm
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+      # Without `webfonts`, which is the configuration that refuses WOFF by
+      # name rather than letting it reach the shaper and register nothing.
+      - name: cargo clippy, the wasm SVG client without webfonts
+        working-directory: crates/hephaestus-svg-wasm
+        run: |
+          cargo clippy --target wasm32-unknown-unknown --no-default-features \
+            -- -D warnings
+
       # `window` on wasm has no caller — `run` is desktop-only — but the
       # module claims to compile there, and nothing else proves it.
       - name: cargo check --target wasm32-unknown-unknown --features window
@@ -371,5 +388,89 @@ jobs:
             console.log('size:    ' + p.size + ' packed / ' + p.unpackedSize + ' unpacked');
           " | tee -a "$GITHUB_STEP_SUMMARY"
           wasm=hephaestus_wasm_bg.wasm
+          echo "wasm: $(stat -c%s $wasm) raw; $(brotli -q 11 -c $wasm | wc -c) brotli" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The other wasm bundle a page can load: same documents, no rasteriser.
+  # Its own job for the same reason `client` is one — `crates/hephaestus-svg-wasm`
+  # is a separate workspace with its own lock file and release profile.
+  client-svg:
+    name: wasm SVG client (wasm-pack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo registry, git, and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/hephaestus-svg-wasm/target
+          key: ${{ runner.os }}-cargo-svg-wasm-${{ hashFiles('crates/hephaestus-svg-wasm/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-svg-wasm-
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      # Same reasoning as the `client` job: wasm-pack warns rather than fails
+      # when its own wasm-opt download does not arrive, and silently ships an
+      # unoptimized binary.
+      - name: Install wasm-opt (binaryen)
+        env:
+          BINARYEN: version_132
+          BINARYEN_SHA256: 195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
+        run: |
+          curl -fsSL -o binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/$BINARYEN/binaryen-$BINARYEN-x86_64-linux.tar.gz"
+          echo "$BINARYEN_SHA256  binaryen.tar.gz" | sha256sum -c -
+          tar -xzf binaryen.tar.gz
+          "$PWD/binaryen-$BINARYEN/bin/wasm-opt" --version
+          echo "$PWD/binaryen-$BINARYEN/bin" >> "$GITHUB_PATH"
+
+      # The fixture `verify-dist.mjs` renders end to end. Unlike the canvas
+      # client, this one can draw with no DOM and no GPU, so a document that
+      # fails to render fails the build here rather than on a page.
+      - name: build the document fixture
+        run: |
+          cargo run --example document_save --features document-write
+          cp examples/document.hep crates/hephaestus-svg-wasm/www/
+
+      - name: assemble the package
+        working-directory: crates/hephaestus-svg-wasm
+        run: ./build.sh
+
+      - name: verify the package
+        working-directory: crates/hephaestus-svg-wasm
+        run: node verify-dist.mjs
+
+      # The half `verify-dist.mjs` cannot reach: ResizeObserver, the markup
+      # swap and `elementFromPoint` picking. Ubuntu runners ship Chrome, so
+      # this costs an env var rather than an install step.
+      - name: browser smoke test
+        working-directory: crates/hephaestus-svg-wasm
+        env:
+          HEPHAESTUS_CHROME: /usr/bin/google-chrome
+        run: node bench/smoke.mjs
+
+      # `npm pack` is the last word on what would actually ship.
+      - name: report the published tarball
+        working-directory: crates/hephaestus-svg-wasm/dist
+        run: |
+          npm pack --dry-run --json > /tmp/pack-svg.json
+          node -e "
+            const p = require('/tmp/pack-svg.json')[0];
+            const names = p.files.map((f) => f.path).sort().join(', ');
+            console.log('tarball: ' + p.filename);
+            console.log('files:   ' + names);
+            console.log('size:    ' + p.size + ' packed / ' + p.unpackedSize + ' unpacked');
+          " | tee -a "$GITHUB_STEP_SUMMARY"
+          wasm=hephaestus_svg_wasm_bg.wasm
           echo "wasm: $(stat -c%s $wasm) raw; $(brotli -q 11 -c $wasm | wc -c) brotli" \
             | tee -a "$GITHUB_STEP_SUMMARY"

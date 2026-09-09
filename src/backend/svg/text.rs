@@ -210,11 +210,18 @@ fn scale_alpha(mut p: paint::Paint, alpha: f32) -> paint::Paint {
 ///
 /// White-space handling is not written here: every `<text>` needs the
 /// same declaration, so the root element carries it for all of them.
+/// `targeted` says whether the scope this block sits in is a
+/// [`ScopeMode::Target`] frame, which decides whether a `Skip` run stays
+/// hittable. One flag serves the whole block: pushing a scope flushes the
+/// open block first, so a block never spans a scope boundary.
+///
+/// [`ScopeMode::Target`]: crate::pick::ScopeMode::Target
 pub(crate) fn write_block(
     out: &mut String,
     block: &TextBlock,
     decimals: u8,
     pick_ids: bool,
+    targeted: bool,
     root: &mut RootFont,
 ) {
     let Some(first) = block.runs.first() else {
@@ -233,7 +240,7 @@ pub(crate) fn write_block(
     out.push('>');
 
     for run in &block.runs {
-        write_tspan(out, run, &shared, decimals, pick_ids, root);
+        write_tspan(out, run, &shared, decimals, pick_ids, targeted, root);
     }
     out.push_str("</text>");
 }
@@ -340,6 +347,7 @@ fn write_tspan(
     shared: &Shared<'_>,
     decimals: u8,
     pick_ids: bool,
+    targeted: bool,
     root: &mut RootFont,
 ) {
     let link = run.link.as_deref().filter(|u| safe_href(u));
@@ -400,8 +408,12 @@ fn write_tspan(
     }
     if pick_ids {
         match run.pick {
-            PickId::Skip => out.push_str(" pointer-events=\"none\""),
-            PickId::Block => out.push_str(" data-pick-id=\"0\""),
+            PickId::Skip if !targeted => out.push_str(" pointer-events=\"none\""),
+            // Inside a `Target` scope the run is the thing being picked —
+            // which is how an axis label participates, having no id of its
+            // own — so it stays hittable and carries no attribute.
+            PickId::Skip => {}
+            PickId::Block => out.push_str(" data-pick-block=\"\""),
             PickId::Id(n) => {
                 out.push_str(" data-pick-id=\"");
                 out.push_str(&n.to_string());

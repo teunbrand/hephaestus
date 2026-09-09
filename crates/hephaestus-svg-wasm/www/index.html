@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>hephaestus-svg</title>
+    <style>
+      :root { color-scheme: light dark; }
+      html, body {
+        margin: 0;
+        height: 100%;
+        font: 13px/1.5 system-ui, sans-serif;
+      }
+      body { display: flex; flex-direction: column; }
+      header {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+      }
+      /* The plot fills what is left, and the container's box is what the
+         layout is solved to — so dragging the window reflows the plot. */
+      #frame { flex: 1; min-height: 0; position: relative; }
+      #frame > svg { display: block; }
+      #status { margin-left: auto; font-variant-numeric: tabular-nums; opacity: 0.75; }
+      #hit { font-family: ui-monospace, monospace; }
+      .error { padding: 1rem; white-space: pre-wrap; color: #b00020; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <label><input type="checkbox" id="dark" /> dark</label>
+      <label><input type="checkbox" id="pick" checked /> picking</label>
+      <button id="save">download .svg</button>
+      <span id="status">loading…</span>
+    </header>
+    <div id="frame"></div>
+    <header><span>under the pointer:</span> <span id="hit">—</span></header>
+
+    <script type="module">
+      const frame = document.getElementById('frame');
+      const status = document.getElementById('status');
+      const hit = document.getElementById('hit');
+
+      // A dynamic import, so a module that fails to load still runs the
+      // handler below rather than silently never executing this script.
+      let mod;
+      try {
+        mod = await import('../dist/hephaestus-svg.js');
+        await mod.default();
+      } catch (e) {
+        frame.innerHTML = `<p class="error">Could not load the client.\n\n${e}\n\n` +
+          `Run ./build.sh first.</p>`;
+        status.textContent = 'failed';
+        throw e;
+      }
+
+      let bytes;
+      try {
+        const res = await fetch('./document.hep');
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        bytes = new Uint8Array(await res.arrayBuffer());
+      } catch (e) {
+        frame.innerHTML = `<p class="error">No document.hep.\n\n` +
+          `cargo run --example document_save --features document-write\n` +
+          `cp examples/document.hep crates/hephaestus-svg-wasm/www/\n\n${e}</p>`;
+        status.textContent = 'no document';
+        throw e;
+      }
+
+      const t0 = performance.now();
+      const view = await mod.PlotView.create(frame, bytes, { colorScheme: 'light' });
+      const ms = (performance.now() - t0).toFixed(0);
+      const report = () => {
+        const w = view.warnings.length ? ` · ${view.warnings.length} warning(s)` : '';
+        status.textContent = `${ms} ms · format v${mod.documentFormatVersion()}${w}`;
+      };
+      report();
+
+      document.getElementById('dark').addEventListener('change', (e) => {
+        view.setColorScheme(e.target.checked ? 'dark' : 'light');
+      });
+
+      // Nothing about this needs the renderer: the markup on screen is the
+      // hit index, so a pointer move is a DOM query and not a call into wasm.
+      frame.addEventListener('pointermove', (e) => {
+        const h = view.pick(e.offsetX, e.offsetY);
+        if (!h) {
+          hit.textContent = '—';
+          return;
+        }
+        const path = h.path
+          .map((s) => s.kind + (s.name ? `(${s.name})` : '') + (s.index != null ? `[${s.index}]` : ''))
+          .join(' › ');
+        hit.textContent = (h.id != null ? `id ${h.id} · ` : '') + (path || '(no scope)');
+      });
+      frame.addEventListener('pointerleave', () => { hit.textContent = '—'; });
+
+      document.getElementById('pick').addEventListener('change', (e) => {
+        // Re-create rather than mutate: `picking` is decided when the markup
+        // is emitted, so the flag only takes effect on the next draw anyway.
+        view.free();
+        mod.PlotView.create(frame, bytes, {
+          colorScheme: document.getElementById('dark').checked ? 'dark' : 'light',
+          picking: e.target.checked,
+        }).then((v) => { window.view = v; });
+      });
+
+      // The export a canvas client cannot offer without a rasteriser: these
+      // are the plot's own bytes, at whatever size it is currently laid out.
+      document.getElementById('save').addEventListener('click', () => {
+        const blob = new Blob([view.toSvgString()], { type: 'image/svg+xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'plot.svg';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+
+      window.view = view;
+    </script>
+  </body>
+</html>

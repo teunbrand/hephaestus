@@ -157,3 +157,95 @@ jobs:
       - name: Publish to npm
         working-directory: crates/hephaestus-wasm/dist
         run: npm publish --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}
+
+  npm-svg:
+    name: Publish the SVG client to npm
+    runs-on: ubuntu-latest
+    environment: npm-svg
+    permissions:
+      # OIDC, as in the `npm` job above: trusted publishing authenticates with
+      # no stored token and signs the provenance attestation.
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The third manifest the tag has to agree with. All three are in
+      # lockstep deliberately — both clients are views onto this crate rather
+      # than things with their own release cycles.
+      - name: Check the tag matches the package version
+        run: |
+          version=$(grep -m1 '^version = ' crates/hephaestus-svg-wasm/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "tag $GITHUB_REF_NAME does not match package version $version" >&2
+            exit 1
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      # Node 22.14 or newer, which is what npm trusted publishing requires.
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Update npm for OIDC support
+        # Install v10.9.8 first as a workaround for nodejs/node#62425.
+        run: |
+          npm install -g npm@10.9.8
+          npm install -g npm@latest
+
+      # Same reasoning as the `npm` job: wasm-pack warns rather than fails when
+      # its own wasm-opt download does not arrive, and ships the unoptimized
+      # binary.
+      - name: Install wasm-opt (binaryen)
+        env:
+          BINARYEN: version_132
+          BINARYEN_SHA256: 195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572
+        run: |
+          curl -fsSL -o binaryen.tar.gz \
+            "https://github.com/WebAssembly/binaryen/releases/download/$BINARYEN/binaryen-$BINARYEN-x86_64-linux.tar.gz"
+          echo "$BINARYEN_SHA256  binaryen.tar.gz" | sha256sum -c -
+          tar -xzf binaryen.tar.gz
+          "$PWD/binaryen-$BINARYEN/bin/wasm-opt" --version
+          echo "$PWD/binaryen-$BINARYEN/bin" >> "$GITHUB_PATH"
+
+      # The fixture `verify-dist.mjs` renders end to end — this client needs
+      # no GPU and no DOM to draw, so the check is worth having before a
+      # publish rather than only in CI.
+      - name: Build the document fixture
+        run: |
+          cargo run --example document_save --features document-write
+          cp examples/document.hep crates/hephaestus-svg-wasm/www/
+
+      # Build and verify in this job rather than inheriting an artifact, for
+      # the same reason the `npm` job does: nothing is rebuilt between the
+      # verification and the publish.
+      - name: Assemble the package
+        working-directory: crates/hephaestus-svg-wasm
+        run: ./build.sh
+
+      - name: Verify the package
+        working-directory: crates/hephaestus-svg-wasm
+        run: node verify-dist.mjs
+
+      - name: Determine npm dist-tag
+        id: dist-tag
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *"-dev"* || "$GITHUB_REF_NAME" == *"-rc"* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        working-directory: crates/hephaestus-svg-wasm/dist
+        run: npm publish --access=public --provenance --tag ${{ steps.dist-tag.outputs.tag }}

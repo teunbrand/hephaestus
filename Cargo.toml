@@ -1,11 +1,11 @@
-# `crates/hephaestus-wasm` is deliberately its own workspace rather than a
-# member of this one. Cargo only honours `[profile]` at a workspace root, so
-# a member could not carry its own size-tuned release profile — the size
-# settings a wasm bundle wants (`opt-level = "z"`, `panic = "abort"`) would
-# have to live here and would then apply to this crate's native release
-# builds, where throughput is the whole point.
+# Both wasm clients are deliberately their own workspaces rather than members
+# of this one. Cargo only honours `[profile]` at a workspace root, so a member
+# could not carry its own size-tuned release profile — the size settings a
+# wasm bundle wants (`opt-level = "z"`, `panic = "abort"`) would have to live
+# here and would then apply to this crate's native release builds, where
+# throughput is the whole point.
 [workspace]
-exclude = ["crates/hephaestus-wasm"]
+exclude = ["crates/hephaestus-wasm", "crates/hephaestus-svg-wasm"]
 
 [package]
 name = "hephaestus"
@@ -589,6 +589,14 @@ required-features = ["vello-hybrid", "document-read", "png"]
 name = "document_load"
 required-features = ["vello", "document-read", "png"]
 
+# Document in, SVG out, with no renderer in the build — the native
+# counterpart to `crates/hephaestus-svg-wasm`, and what gives the
+# renderer-free `document-read,svg` configuration something that runs rather
+# than only type-checks.
+[[example]]
+name = "document_svg"
+required-features = ["document-read", "svg"]
+
 [[test]]
 name = "smoke"
 required-features = ["vello"]
@@ -657,6 +665,13 @@ required-features = ["png"]
 [[test]]
 name = "document_roundtrip"
 required-features = ["vello", "document"]
+
+# The pipeline `crates/hephaestus-svg-wasm` is, with no browser around it.
+# `document` rather than `document-read` because the fixture has to be
+# written before it can be read; the client compiles only the read half.
+[[test]]
+name = "document_svg"
+required-features = ["document", "svg"]
 
 [[example]]
 name = "backend_perf"

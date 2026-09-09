@@ -28,6 +28,7 @@ cargo test --no-default-features --features vello-hybrid --test hybrid  # the sp
 cargo test --test window_blit                            # the window presentation blit, headless
 cargo check --no-default-features --features window,vello-hybrid,png  # presentation with no compute-shader backend
 cargo test --features document --test document_roundtrip # plot documents: reflow at unseen sizes
+cargo test --no-default-features --features document,svg --test document_svg  # document in, SVG out: the wasm SVG client's pipeline
 cargo test --features svg --test svg                     # the vector backend, with and without a codec
 cargo test --features svg,png --test svg
 cargo test --features pdf --test pdf                     # the fixed vector backend
@@ -44,6 +45,7 @@ cargo check --no-default-features --features document-read,pdf  # …and documen
 cargo run --example image_formats --features jpeg,tiff,webp  # all four raster writers
 cargo run --example image_geom                           # raster images placed in a panel, and in markdown
 cargo run --example document_placeholder --features vello-hybrid,document-read,png  # the static picture a page shows while the client boots
+cargo run --example document_svg --no-default-features --features document-read,svg  # document in, SVG out, no renderer in the build
 cargo run --example window --features window             # live window: resize + hover picking
 cargo run --release --example window --features window -- 100000  # same scene at N points
 cargo run --release --example window --features window,vello-hybrid -- 200000 hybrid  # sparse strips: no draw cap
@@ -61,6 +63,18 @@ cd crates/hephaestus-wasm && ./build.sh && node verify-dist.mjs   # assemble + c
 cd crates/hephaestus-wasm && node bench/pixel-diff.mjs           # does a native pre-render match the client's frame?
 cd crates/hephaestus-wasm && node bench/swap.mjs                 # is first paint immediate, and the swap invisible?
 ```
+
+The SVG client is a third workspace, and needs no GPU to check anything:
+
+```sh
+cargo clippy --target wasm32-unknown-unknown -- -D warnings      # in crates/hephaestus-svg-wasm
+cd crates/hephaestus-svg-wasm && ./build.sh && node verify-dist.mjs
+```
+
+Its `verify-dist.mjs` renders `www/document.hep` end to end — decode, solve,
+shape, emit — because this client needs neither a DOM nor an adapter to draw.
+Populate the fixture with `cargo run --example document_save --features
+document-write` and copy it into `www/`.
 
 `crates/hephaestus-wasm/bench/README.md` covers the startup measurements, what
 they mean and how to reproduce them. The headline: with a natively-rendered
@@ -104,7 +118,7 @@ Style rules (apply everywhere, including comments in `tests/` and `examples/`):
 - **`canvas`** (off by default) — presentation onto a `<canvas>` already on a page, for a wasm build embedded in a website. Shares the `WindowApp` / `Frame` / `Event` surface and the blit path with `window`, but the page owns the event loop and feeds resize and pointer events in. Requires a rasterizing backend; pulls no winit. Only `wasm32` compiles the host, since `wgpu::SurfaceTarget::Canvas` exists nowhere else. The client built on it is `crates/hephaestus-wasm`.
 - **`geom-wkt`**, **`geom-wkb`**, **`geom-geojson`** (off by default) — opt-in parsers for `crate::scales::Geometry`. Each gate enables one of `Geometry::from_wkt` / `from_wkb` / `from_geojson`. Hand-rolled and dependency-free, so toggling them only affects what constructors compile, not the dependency tree.
 - **`document-read`**, **`document-write`**, **`document`** (off by default) — plot documents: capture a `PlotComposition` to a self-contained binary file (`.hep` by convention) and rebuild it elsewhere, so a wasm build on a website re-solves the layout at whatever size it has rather than scaling a frozen image. Hand-rolled and dependency-free, like the `geom-*` parsers. Split by direction because a consumer only ever reads; `document` enables both. See `src/document/CLAUDE.md`. Adding no dependency of their own, they are also the one useful configuration with no renderer at all: `--no-default-features --features document-write` builds a writer that compiles on rustc 1.86, which `vello` rules out.
-- **`svg`** (off by default) — vector output: a `SceneBuilder` that emits SVG text instead of pixels, so it implements `SceneBuilder` and not `Renderer`. The point is *editable* output rather than merely vector output — text arrives as real `<text>` elements naming their font, markdown links as `<a href>`, decorations as `text-decoration`, and a filled-and-stroked mark as one `<path>` rather than two stacked ones. Needs no GPU and adds only `skrifa` (already in the tree via parley, for the glyph-outline fallback), which makes `--no-default-features --features document-read,svg` a renderer-free "document in, SVG out" build on rustc 1.86. Embedding a raster image additionally needs `png`; without it an image is reported and skipped. See `src/backend/svg/CLAUDE.md`.
+- **`svg`** (off by default) — vector output: a `SceneBuilder` that emits SVG text instead of pixels, so it implements `SceneBuilder` and not `Renderer`. The point is *editable* output rather than merely vector output — text arrives as real `<text>` elements naming their font, markdown links as `<a href>`, decorations as `text-decoration`, and a filled-and-stroked mark as one `<path>` rather than two stacked ones. Needs no GPU and adds only `skrifa` (already in the tree via parley, for the glyph-outline fallback), which makes `--no-default-features --features document-read,svg` a renderer-free "document in, SVG out" build on rustc 1.86. Embedding a raster image additionally needs `png`; without it an image is reported and skipped. This is also what `crates/hephaestus-svg-wasm` is built on — a wasm client with no rasteriser at all, which resizes by re-emitting the markup rather than redrawing a canvas. See `src/backend/svg/CLAUDE.md`.
 - **`pdf`** (off by default) — fixed vector output: a `SceneBuilder` that emits a PDF file. Where `svg` aims at output someone can *edit*, this aims at output that looks the same everywhere — a figure going into a paper, a print pipeline or an archive. So every glyph a plot draws is embedded, always, as a subset font synthesized from the outlines actually used: a few kB rather than the 2.4 MB collection macOS resolves `sans-serif` to, and one code path that also handles CFF faces, variable-font instances and collections, none of which `svg` can embed. Adds `skrifa` (already in the tree via parley) and `flate2` (already there via `png`), so `--no-default-features --features document-read,pdf` is a renderer-free "document in, PDF out" build on rustc 1.86. Unlike `svg` it does not need `png` for raster images — PDF takes raw samples — but it does reach for it to decode a *bitmap* color glyph, which is how most emoji ship; without it those report `PdfWarning::MissingPngFeature`. Three things this expresses that `svg` cannot: real transparency groups, a native Gouraud mesh shading, and color emoji. See `src/backend/pdf/CLAUDE.md`.
 - **`blend2d`** — a feature placeholder only; no backend code behind it yet. Wired so dependent crates can write `features = ["blend2d"]` once it exists.
 
@@ -130,8 +144,9 @@ tag matches the version they are about to publish.
 
 ### Cutting a release
 
-1. **Bump the version in both manifests**, to the same number: `Cargo.toml`
-   and `crates/hephaestus-wasm/Cargo.toml`.
+1. **Bump the version in all three manifests**, to the same number:
+   `Cargo.toml`, `crates/hephaestus-wasm/Cargo.toml` and
+   `crates/hephaestus-svg-wasm/Cargo.toml`.
 2. **Regenerate `Cargo.lock`.** It is tracked and records this crate's own
    version, so a bump leaves it stale. Any resolving command rewrites it —
    `cargo metadata --no-deps` does not, since it skips resolution.
@@ -150,20 +165,24 @@ tag matches the version they are about to publish.
    A GitHub Release is not required — `push: tags` is the trigger. Creating
    one works too, since it pushes a tag.
 
-### One version, two manifests
+### One version, three manifests
 
-The crate's version and the npm package's live in separate files, and both
-guards check against the tag: `v0.2.0` needs both manifests to read `0.2.0`
-or the mismatched job fails. They are in lockstep deliberately, since the wasm
-client is a view onto this crate rather than something with its own release
-cycle.
+The crate's version and the two npm packages' live in separate files, and every
+guard checks against the tag: `v0.2.0` needs all three manifests to read
+`0.2.0` or the mismatched job fails. They are in lockstep deliberately, since
+both wasm clients are views onto this crate rather than things with their own
+release cycles.
 
-The two publishes are otherwise independent — the client depends on this
-crate by path, not by version — so ordering does not matter. It does mean
-half a release is a reachable state, and not one a retry fixes: crates.io
-refuses a version it already has, and an npm version cannot be reused.
-Recovering means publishing the failed half by hand, or bumping both and
-cutting again.
+The three publishes are otherwise independent — each client depends on this
+crate by path, not by version — so ordering does not matter. It does mean a
+*fraction* of a release is a reachable state, and not one a retry fixes:
+crates.io refuses a version it already has, and an npm version cannot be
+reused. Recovering means publishing the failed part by hand, or bumping all
+three and cutting again.
+
+Each npm package needs its own one-time trusted-publisher registration naming
+`release.yml`, and its own GitHub environment — `npm` and `npm-svg`. A missing
+registration fails only that job, with the rest of the release already through.
 
 ### Why releasing is its own workflow
 
@@ -172,8 +191,8 @@ publish job inside `check.yml` would mean every change to the everyday check
 workflow touches something that can publish. `release.yml` runs on nothing but
 a tag, which keeps that surface as small as the trust model allows.
 
-Each registry needs one-time setup: a GitHub environment — `crates-io` and
-`npm` — and a trusted publisher naming `release.yml`.
+Each registry needs one-time setup: a GitHub environment — `crates-io`, `npm`
+and `npm-svg` — and a trusted publisher naming `release.yml`.
 
 See `crates/hephaestus-wasm/CLAUDE.md` for the npm side in detail.
 
@@ -184,6 +203,7 @@ See `crates/hephaestus-wasm/CLAUDE.md` for the npm side in detail.
 - **`src/CLAUDE.md`** — code architecture: API levels, two-trait split, intersection-of-backends rule, picking model, module map.
 - **Per-module `CLAUDE.md` files** under `src/scene/`, `src/backend/`, `src/backend/vello/`, `src/backend/hybrid/`, `src/layout/`, `src/composition/`, `src/document/`, `src/primitives/`, `src/plot/`, `src/plot/geom/`, `src/plot/theme/`, `src/scales/`, `src/image/`, `src/text/`, `src/text/rich/`, `src/window/`.
 - **`crates/hephaestus-wasm/CLAUDE.md`** — the wasm render client: the Rust/JS split, why WebGPU is required, and why fonts are the thing that surprises people.
+- **`crates/hephaestus-svg-wasm/CLAUDE.md`** — the wasm SVG client: the same documents with no rasteriser, what dropping it deletes, why picking is the DOM, and the one font trap that is this client's alone.
 
 ## Help / feedback
 

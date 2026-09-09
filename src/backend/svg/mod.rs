@@ -32,7 +32,7 @@ use crate::color::Color;
 use crate::geometry::{Affine, Size};
 use crate::mesh::Mesh;
 use crate::path::{FillRule, Path};
-use crate::pick::{PickId, PickScope};
+use crate::pick::{PickId, PickScope, ScopeMode};
 use crate::scene::{GlyphRun, SceneBuilder};
 
 use defs::{DefKind, Defs};
@@ -137,10 +137,10 @@ pub struct SvgConfig {
     /// define `#lg0` will have the second's `url(#lg0)` resolve to the
     /// first's definition, in every browser.
     pub id_prefix: Option<String>,
-    /// Emit `data-pick-id` for picked primitives, and
-    /// `pointer-events="none"` for skipped ones. Off by default: file
-    /// export is the common case and the attributes are pure weight
-    /// there.
+    /// Emit `data-pick-id` for picked primitives, `data-pick-block` for
+    /// occluding ones, and `pointer-events="none"` for skipped ones. Off
+    /// by default: file export is the common case and the attributes are
+    /// pure weight there.
     pub pick_ids: bool,
     /// How text is written.
     pub text: TextMode,
@@ -261,6 +261,12 @@ pub struct SvgScene {
     pending: Option<PendingFill>,
     /// Runs accumulating toward one `<text>` element.
     block: text::TextBlock,
+    /// Modes of the open pick scopes, innermost last.
+    ///
+    /// Separate from `groups` because that stack interleaves layers with
+    /// scopes, and the rule this feeds asks for the innermost *scope*
+    /// whatever layers sit between.
+    scope_modes: Vec<ScopeMode>,
     /// Faces the document referenced, for the `<style>` block.
     fonts: fonts::FontRegistry,
     /// Chrome belonging to the open text block — span backgrounds and
@@ -292,6 +298,7 @@ impl SvgScene {
             defs: Defs::default(),
             warnings: Warnings::default(),
             groups: Vec::new(),
+            scope_modes: Vec::new(),
             pending: None,
             block: text::TextBlock::default(),
             fonts: fonts::FontRegistry::default(),
@@ -345,7 +352,15 @@ impl SvgScene {
         self.body.push_str(&std::mem::take(&mut self.block_prelude));
         let block = std::mem::take(&mut self.block);
         let (dec, pick) = (self.config.decimals, self.config.pick_ids);
-        text::write_block(&mut self.body, &block, dec, pick, &mut self.root_font);
+        let targeted = self.innermost_scope_targets();
+        text::write_block(
+            &mut self.body,
+            &block,
+            dec,
+            pick,
+            targeted,
+            &mut self.root_font,
+        );
     }
 
     /// True when a text block is open, so its own chrome should be
@@ -358,10 +373,11 @@ impl SvgScene {
     fn flush_pending(&mut self) {
         let Some(p) = self.pending.take() else { return };
         let (dec, pick) = (self.config.decimals, self.config.pick_ids);
+        let targeted = self.innermost_scope_targets();
         if self.block_open() {
-            write_pending_fill(&mut self.block_prelude, &p, dec, pick);
+            write_pending_fill(&mut self.block_prelude, &p, dec, pick, targeted);
         } else {
-            write_pending_fill(&mut self.body, &p, dec, pick);
+            write_pending_fill(&mut self.body, &p, dec, pick, targeted);
         }
     }
 
@@ -377,24 +393,36 @@ impl SvgScene {
         write_stroke_attrs_to(&mut self.body, stroke, paint, dec, &mut self.warnings);
     }
 
-    /// Append the picking attributes, when the config asks for them.
     /// Close the innermost `<g>`, provided it is the kind being closed.
     ///
     /// A mismatch means the two stacks were interleaved rather than nested;
     /// emitting `</g>` anyway would close the wrong element, so the pop is
-    /// dropped and noted instead.
-    fn close_group(&mut self, kind: GroupKind, warning: SvgWarning) {
+    /// dropped and noted instead. The return says which happened, so a caller
+    /// keeping a parallel stack knows whether to pop it too.
+    fn close_group(&mut self, kind: GroupKind, warning: SvgWarning) -> bool {
         if self.groups.last() != Some(&kind) {
             self.warnings.note(warning);
-            return;
+            return false;
         }
         self.groups.pop();
         self.body.push_str("</g>");
+        true
     }
 
+    /// Append the picking attributes, when the config asks for them.
     fn write_pick(&mut self, pick: PickId) {
         let on = self.config.pick_ids;
-        write_pick_to(&mut self.body, pick, on);
+        let targeted = self.innermost_scope_targets();
+        write_pick_to(&mut self.body, pick, on, targeted);
+    }
+
+    /// Whether a primitive drawn here belongs to the scope around it.
+    ///
+    /// The indexing rule in `src/CLAUDE.md`, applied to markup: inside a
+    /// [`ScopeMode::Target`] frame a [`PickId::Skip`] primitive *is* the
+    /// target, which is how chrome participates without an id of its own.
+    fn innermost_scope_targets(&self) -> bool {
+        self.scope_modes.last() == Some(&ScopeMode::Target)
     }
 
     /// Draw a run as glyph outlines.
@@ -445,6 +473,7 @@ impl SvgScene {
                 &self.block,
                 dec,
                 self.config.pick_ids,
+                self.innermost_scope_targets(),
                 &mut root_font,
             );
         }
@@ -532,7 +561,13 @@ impl SvgScene {
         }
         out.push_str(&tail);
         if let Some(p) = &self.pending {
-            write_pending_fill(&mut out, p, dec, self.config.pick_ids);
+            write_pending_fill(
+                &mut out,
+                p,
+                dec,
+                self.config.pick_ids,
+                self.innermost_scope_targets(),
+            );
         }
         // A scene may leave layers open; closing them keeps the
         // document well-formed, which matters more than the warning.
@@ -627,6 +662,7 @@ impl SceneBuilder for SvgScene {
             Some(p) if p.transform == transform && p.path == *path
         );
         let pick_on = self.config.pick_ids;
+        let targeted = self.innermost_scope_targets();
         // Built into a local so it can land in the body or, while a
         // text block is open, in that block's prelude.
         let mut el = String::new();
@@ -646,7 +682,7 @@ impl SceneBuilder for SvgScene {
             write_fill_attrs_to(&mut el, &p.paint, p.rule, dec);
             write_stroke_attrs_to(&mut el, stroke, &paint, dec, &mut self.warnings);
             transform_attr(&mut el, transform, dec);
-            write_pick_to(&mut el, p.pick, pick_on);
+            write_pick_to(&mut el, p.pick, pick_on, targeted);
             el.push_str("/>");
         } else {
             self.flush_pending();
@@ -666,7 +702,7 @@ impl SceneBuilder for SvgScene {
             el.push_str("\" fill=\"none\"");
             write_stroke_attrs_to(&mut el, stroke, &paint, dec, &mut self.warnings);
             transform_attr(&mut el, transform, dec);
-            write_pick_to(&mut el, pick_id, pick_on);
+            write_pick_to(&mut el, pick_id, pick_on, targeted);
             el.push_str("/>");
         }
         if self.block_open() {
@@ -837,6 +873,7 @@ impl SceneBuilder for SvgScene {
         }
         self.body.push('>');
         self.groups.push(GroupKind::Scope);
+        self.scope_modes.push(scope.mode());
     }
 
     fn pop_pick_scope(&mut self) {
@@ -845,7 +882,9 @@ impl SceneBuilder for SvgScene {
         }
         self.flush_block();
         self.flush_pending();
-        self.close_group(GroupKind::Scope, SvgWarning::UnbalancedScopes);
+        if self.close_group(GroupKind::Scope, SvgWarning::UnbalancedScopes) {
+            self.scope_modes.pop();
+        }
     }
 }
 
@@ -917,7 +956,7 @@ fn write_fill_attrs_to(out: &mut String, paint: &paint::Paint, rule: FillRule, d
 }
 
 /// Append the picking attributes, when they are switched on.
-fn write_pick_to(out: &mut String, pick: PickId, on: bool) {
+fn write_pick_to(out: &mut String, pick: PickId, on: bool, targeted: bool) {
     if !on {
         return;
     }
@@ -925,8 +964,16 @@ fn write_pick_to(out: &mut String, pick: PickId, on: bool) {
         // Reproduces "items beneath remain hittable through this
         // primitive" under `elementFromPoint`. Without it a gridline
         // over a mark swallows the hit.
-        PickId::Skip => out.push_str(" pointer-events=\"none\""),
-        PickId::Block => out.push_str(" data-pick-id=\"0\""),
+        PickId::Skip if !targeted => out.push_str(" pointer-events=\"none\""),
+        // Inside a `Target` scope the same primitive is the thing being
+        // picked, so it stays hittable and reports through the enclosing
+        // `<g data-pick-kind>` rather than through an id it does not have.
+        PickId::Skip => {}
+        // Its own attribute rather than a reserved id: the id space is the
+        // full `u32` with nothing set aside, so `Id(0)` is an ordinary mark
+        // and writing `Block` as `data-pick-id="0"` would make the two
+        // indistinguishable to whatever reads the markup back.
+        PickId::Block => out.push_str(" data-pick-block=\"\""),
         PickId::Id(n) => {
             out.push_str(" data-pick-id=\"");
             out.push_str(&n.to_string());
@@ -936,7 +983,13 @@ fn write_pick_to(out: &mut String, pick: PickId, on: bool) {
 }
 
 /// Write a fill that no stroke joined.
-fn write_pending_fill(out: &mut String, p: &PendingFill, decimals: u8, pick_ids: bool) {
+fn write_pending_fill(
+    out: &mut String,
+    p: &PendingFill,
+    decimals: u8,
+    pick_ids: bool,
+    targeted: bool,
+) {
     let d = path::to_d(&p.path, decimals);
     if d.is_empty() {
         return;
@@ -946,7 +999,7 @@ fn write_pending_fill(out: &mut String, p: &PendingFill, decimals: u8, pick_ids:
     out.push('"');
     write_fill_attrs_to(out, &p.paint, p.rule, decimals);
     transform_attr(out, p.transform, decimals);
-    write_pick_to(out, p.pick, pick_ids);
+    write_pick_to(out, p.pick, pick_ids, targeted);
     out.push_str("/>");
 }
 

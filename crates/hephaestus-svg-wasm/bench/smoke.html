@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- Instrument page for bench/smoke.mjs. Deliberately not www/index.html: the
+     demo is for a human to look at, and pinning assertions to its markup would
+     make it unchangeable. This one publishes `window.__view` and a `__ready`
+     flag and does nothing else. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>smoke</title>
+    <style>
+      html, body { margin: 0; }
+      /* An explicit box, so the harness can resize it and watch the plot
+         follow. Width is what the tests drive; height stays put. */
+      #frame { width: 900px; height: 420px; }
+    </style>
+  </head>
+  <body>
+    <div id="frame"></div>
+    <script type="module">
+      try {
+        const mod = await import('../dist/hephaestus-svg.js');
+        await mod.default();
+        const res = await fetch('../www/document.hep');
+        if (!res.ok) throw new Error(`document.hep: ${res.status}`);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+
+        const t0 = performance.now();
+        const view = await mod.PlotView.create(document.getElementById('frame'), bytes, {
+          // Never 'auto': the harness asserts on the light theme first and
+          // headless Chrome's prefers-color-scheme is not ours to depend on.
+          colorScheme: 'light',
+        });
+        window.__view = view;
+        window.__ready = { ms: Math.round(performance.now() - t0), warnings: view.warnings.length };
+      } catch (e) {
+        window.__error = String(e && e.stack ? e.stack : e);
+      }
+    </script>
+  </body>
+</html>

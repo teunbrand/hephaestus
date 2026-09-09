@@ -102,7 +102,7 @@ Filling the index during a draw, and building the R-tree lazily on the first que
 
 - **`RecordingScene`** stores both `PickId` and the scope ops faithfully. `draw_ops()` skips the scope bookkeeping, for a test asserting what got *drawn*; `scope_at(i)` reads the stack in effect at an op.
 - **Rasterising backends ignore `pick_id`.** The index sits above them, so a rasteriser has nothing to do with it.
-- **SVG surfaces both** — `data-pick-id` on primitives and `<g data-pick-kind=…>` for scopes, behind the one `SvgConfig::pick_ids` flag. PDF accepts and ignores.
+- **SVG surfaces both** — `data-pick-id` on primitives (`data-pick-block` for `Block`, so nothing is reserved in the id space) and `<g data-pick-kind=…>` for scopes, behind the one `SvgConfig::pick_ids` flag. PDF accepts and ignores.
 
 ## Core types — wrapping kurbo + peniko
 

@@ -12,7 +12,7 @@
 // Serves the crate directory, so `/www/` and `/dist/` both resolve the way
 // they do in the published layout.
 //
-//   node bench/server.mjs [--port 8080] [--brotli] [--no-cache]
+//   node bench/server.mjs [--port 8080] [--root DIR] [--brotli] [--no-cache]
 
 import { createServer } from 'node:http';
 import { createReadStream } from 'node:fs';
@@ -23,7 +23,6 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const compress = promisify(brotliCompress);
-const ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
@@ -31,6 +30,11 @@ const value = (name, fallback) => {
   const i = args.indexOf(`--${name}`);
   return i === -1 ? fallback : args[i + 1];
 };
+
+// This crate by default. `--root` is what lets the sibling SVG client's
+// harness serve *its* directory through the same server rather than growing a
+// second copy of one.
+const ROOT = path.resolve(value('root', fileURLToPath(new URL('..', import.meta.url))));
 
 const PORT = Number(value('port', 8080));
 const BROTLI = flag('brotli');

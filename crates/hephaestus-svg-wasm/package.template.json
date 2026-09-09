@@ -1,0 +1,28 @@
+{
+  "name": "hephaestus-svg-wasm",
+  "version": "0.0.0",
+  "description": "Render a hephaestus plot document to SVG in the browser.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/posit-dev/hephaestus"
+  },
+  "keywords": ["visualization", "plotting", "svg", "wasm", "dataviz"],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./hephaestus-svg.d.ts",
+      "default": "./hephaestus-svg.js"
+    }
+  },
+  "types": "./hephaestus-svg.d.ts",
+  "files": [
+    "hephaestus-svg.js",
+    "hephaestus-svg.d.ts",
+    "hephaestus_svg_wasm.js",
+    "hephaestus_svg_wasm.d.ts",
+    "hephaestus_svg_wasm_bg.wasm",
+    "fonts/"
+  ],
+  "sideEffects": false
+}

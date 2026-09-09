@@ -822,6 +822,13 @@ fn pick_scopes_become_groups_when_picking_is_on() {
         svg.contains(r#"<g data-pick-kind="item" data-pick-index="3">"#),
         "{svg}"
     );
+    // A `Skip` primitive inside a `Target` scope is the thing being picked —
+    // the indexing rule chrome relies on, since chrome carries no id — so it
+    // must stay hittable rather than opting out of pointer events.
+    assert!(
+        !svg.contains("pointer-events=\"none\""),
+        "a Skip inside a Target scope stays hittable: {svg}"
+    );
     // Balanced: as many closers as openers, and the document is well formed.
     assert_eq!(
         svg.matches("<g ").count(),
@@ -911,9 +918,16 @@ fn picking_attributes_are_off_by_default_and_complete_when_on() {
     draw(&mut on);
     let svg = encode_svg(&on);
     assert!(svg.contains("data-pick-id=\"42\""), "{svg}");
+    // Its own attribute, so `Id(0)` stays an ordinary mark: nothing is
+    // reserved in the id space, and one spelling for both would be
+    // ambiguous to whatever reads the markup back.
     assert!(
-        svg.contains("data-pick-id=\"0\""),
-        "Block records as 0: {svg}"
+        svg.contains("data-pick-block=\"\""),
+        "Block gets its own attribute: {svg}"
+    );
+    assert!(
+        !svg.contains("data-pick-id=\"0\""),
+        "Block must not claim id 0: {svg}"
     );
     // Without this a skipped gridline over a mark swallows the hit.
     assert!(svg.contains("pointer-events=\"none\""), "{svg}");
@@ -1434,4 +1448,47 @@ fn a_tag_that_would_break_the_css_string_is_dropped() {
     }]));
     assert!(!svg.contains("font-feature-settings"), "{svg}");
     assert_well_formed(&svg);
+}
+
+#[test]
+fn a_skip_opts_out_of_hit_testing_only_outside_a_target_scope() {
+    let r = rect_path(Rect::new(10.0, 10.0, 90.0, 60.0));
+    let skip_fill = |s: &mut SvgScene| {
+        s.fill(
+            FillRule::NonZero,
+            Affine::IDENTITY,
+            &black(),
+            None,
+            &r,
+            PickId::Skip,
+        );
+    };
+
+    // A grouping frame is the default, and leaves the old behaviour alone: an
+    // unpicked gridline over a mark must not swallow the mark's hit.
+    let mut grouped = SvgScene::with_config(Size::new(W, H), 96.0, SvgConfig::new().pick_ids(true));
+    grouped.push_pick_scope(&PickScope::group("geom"));
+    skip_fill(&mut grouped);
+    grouped.pop_pick_scope();
+    let svg = encode_svg(&grouped);
+    assert!(svg.contains("pointer-events=\"none\""), "{svg}");
+
+    // A target frame is how chrome participates without an id of its own, so
+    // the same call has to remain hittable there.
+    let mut targeted =
+        SvgScene::with_config(Size::new(W, H), 96.0, SvgConfig::new().pick_ids(true));
+    targeted.push_pick_scope(&PickScope::target("part").with_name("axis_title"));
+    skip_fill(&mut targeted);
+    targeted.pop_pick_scope();
+    let svg = encode_svg(&targeted);
+    assert!(!svg.contains("pointer-events=\"none\""), "{svg}");
+
+    // Popping back out restores it: the flag follows the innermost scope
+    // rather than latching for the rest of the document.
+    let mut after = SvgScene::with_config(Size::new(W, H), 96.0, SvgConfig::new().pick_ids(true));
+    after.push_pick_scope(&PickScope::target("part"));
+    after.pop_pick_scope();
+    skip_fill(&mut after);
+    let svg = encode_svg(&after);
+    assert!(svg.contains("pointer-events=\"none\""), "{svg}");
 }

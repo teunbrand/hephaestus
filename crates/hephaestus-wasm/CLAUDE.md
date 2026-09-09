@@ -27,6 +27,17 @@ The wasm render client: a page loads this, points it at a `<canvas>` and a
 `.hep` document, and gets a plot that reflows on resize and follows
 light/dark.
 
+**There are two clients, and this is the rasterising one.**
+`crates/hephaestus-svg-wasm` reads the same documents and emits SVG markup
+instead, which the page swaps wholesale on resize. Pick between them on one
+question: **how many marks?** A canvas is indifferent to a hundred thousand of
+them and the DOM is not, so a dense scatter belongs here. Everything else
+points the other way — that client is ~23% smaller, needs no WebGPU and no
+WebGL2 context, puts no cap on how many plots a page can show, hit-tests
+through `elementFromPoint` with no index to build, and gives a page real
+selectable text it can hand to a designer. It also gets the placeholder story
+for free, since its placeholder and its output are the same format.
+
 Its own workspace, not a member of the crate above it. See the note in
 `../../Cargo.toml`: cargo honours `[profile]` only at a workspace root, so a
 member could not carry `opt-level = "z"` / `panic = "abort"` without those

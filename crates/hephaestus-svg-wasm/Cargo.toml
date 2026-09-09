@@ -1,0 +1,71 @@
+[package]
+name = "hephaestus-svg-wasm"
+version = "0.4.1"
+edition = "2021"
+description = "Render a hephaestus plot document to SVG in the browser."
+license = "MIT"
+repository = "https://github.com/posit-dev/hephaestus"
+publish = false
+
+# Its own workspace, for the same reason `hephaestus-wasm` is one: profiles
+# are honoured only at a workspace root, and the size settings below must not
+# reach `hephaestus`'s native builds. See the note in `../../Cargo.toml`.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# No rasteriser, which is the whole point of this client: `svg` implements
+# `SceneBuilder` and not `Renderer`, so there is no wgpu, no vello_hybrid, no
+# vello_common and no glifo in the bundle, and nothing to ask the browser for.
+#
+# `png` is here for the same reason the canvas client carries it: a document
+# can embed the images an `ImageGeom` names, and the SVG backend re-encodes
+# them into a data URL. Without it both halves degrade — the `imgs` chunk is
+# skipped on read, and an image draws nothing and reports
+# `SvgWarning::MissingPngFeature`.
+#
+# Still absent: `document-write` (a consumer only reads), `google-fonts`
+# (`ureq` has no wasm target), and every raster writer.
+hephaestus = { path = "../..", default-features = false, features = [
+    "document-read",
+    "svg",
+    "png",
+] }
+wasm-bindgen = "0.2"
+
+# Panic messages cost real bytes, so the hook is opt-in and off in the
+# bundle a site ships. Build with `--features debug-panics` while developing.
+console_error_panic_hook = { version = "0.1", optional = true }
+
+# WOFF / WOFF2 decoding, so `registerFont` accepts what a font CDN actually
+# serves a browser. Pure Rust and no build script; `brotli` here is
+# `brotli-decompressor`, the decode-only half.
+wuff = { version = "0.2", optional = true, default-features = false, features = ["brotli", "z"] }
+
+[features]
+default = ["webfonts"]
+debug-panics = ["dep:console_error_panic_hook"]
+webfonts = ["dep:wuff"]
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+# The feature flags are not optional: rustc emits bulk-memory and
+# nontrapping-fptoint for `wasm32-unknown-unknown` by default, and wasm-opt
+# rejects both unless told to expect them.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = [
+    "-Oz",
+    "--enable-bulk-memory",
+    "--enable-nontrapping-float-to-int",
+    "--enable-reference-types",
+    "--enable-sign-ext",
+    "--enable-mutable-globals",
+    "--enable-multivalue",
+]

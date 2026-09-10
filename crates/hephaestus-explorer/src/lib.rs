@@ -22,6 +22,7 @@
 #![cfg(windows)]
 
 mod bitmap;
+mod diagnostics;
 mod preview;
 mod registry;
 mod stream;
@@ -40,6 +41,7 @@ use windows::Win32::System::LibraryLoader::{
     GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
 };
 
+use diagnostics::diag;
 use preview::PreviewHandler;
 use registry::Hive;
 use thumbnail::ThumbnailProvider;
@@ -82,7 +84,7 @@ fn retain() {
 }
 
 /// Which of the two extensions a factory makes.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Class {
     Thumbnail,
     Preview,
@@ -150,8 +152,10 @@ pub unsafe extern "system" fn DllGetClassObject(
     } else if *clsid == CLSID_PREVIEW_HANDLER {
         Class::Preview
     } else {
+        diag!("DllGetClassObject: not our class {:?}", *clsid);
         return CLASS_E_CLASSNOTAVAILABLE;
     };
+    diag!("DllGetClassObject: creating a factory for {class:?}");
     let factory: IClassFactory = Factory { class }.into();
     match factory.query(&*iid, object) {
         HRESULT(0) => S_OK,
@@ -183,6 +187,7 @@ pub extern "system" fn DllRegisterServer() -> HRESULT {
 
 fn register() -> Result<()> {
     let path = module_path()?;
+    diag!("registering from {path}");
 
     // The thumbnail handler: a class, and the extension pointing at it.
     let thumbnail = registry::braced(&CLSID_THUMBNAIL_PROVIDER);
@@ -217,6 +222,7 @@ fn register() -> Result<()> {
         Some(&preview),
         "Hephaestus plot preview handler",
     )?;
+    diag!("registered thumbnail {thumbnail} and preview {preview}");
     Ok(())
 }
 

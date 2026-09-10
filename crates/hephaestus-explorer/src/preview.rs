@@ -32,8 +32,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WINDOW_EX_STYLE, WM_ERASEBKGND, WM_PAINT, WNDCLASSEXW, WS_CHILD, WS_VISIBLE,
 };
 
-use crate::bitmap;
-use crate::stream;
+use crate::diagnostics::diag;
+use crate::{bitmap, stream};
 
 /// Window class this registers once, lazily.
 const CLASS_NAME: PCWSTR = windows::core::w!("HephaestusPreviewPane");
@@ -82,7 +82,9 @@ impl Default for PreviewHandler {
 
 impl IInitializeWithStream_Impl for PreviewHandler_Impl {
     fn Initialize(&self, source: windows_core::Ref<'_, IStream>, _mode: u32) -> Result<()> {
-        *self.document.borrow_mut() = Some(stream::read_all(source.ok()?)?);
+        let bytes = stream::read_all(source.ok()?)?;
+        diag!("preview: initialized with {} bytes", bytes.len());
+        *self.document.borrow_mut() = Some(bytes);
         Ok(())
     }
 }
@@ -113,7 +115,9 @@ impl IPreviewHandler_Impl for PreviewHandler_Impl {
     }
 
     fn DoPreview(&self) -> Result<()> {
+        diag!("preview: DoPreview");
         if self.document.borrow().is_none() {
+            diag!("preview: no document — Initialize was never called");
             return Err(E_FAIL.into());
         }
         self.ensure_window()?;
@@ -251,11 +255,21 @@ impl PreviewHandler_Impl {
             *renderer = hephaestus_thumbnailer::Renderer::new().ok();
         }
         let Some(renderer) = renderer.as_mut() else {
+            diag!("preview: no GPU adapter — nothing will be drawn");
             return;
         };
-        let Ok(rendered) = renderer.render_boxed(document, width, height) else {
-            return;
+        let rendered = match renderer.render_boxed(document, width, height) {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                diag!("preview: render failed at {width}x{height}: {error}");
+                return;
+            }
         };
+        diag!(
+            "preview: rendered {}x{} into a {width}x{height} pane",
+            rendered.width,
+            rendered.height
+        );
 
         {
             let mut pane = self.pane.borrow_mut();

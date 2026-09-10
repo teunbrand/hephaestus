@@ -26,6 +26,12 @@ DLL.
 Shell extensions fail the same way Quick Look extensions do: silently. Expect
 to debug by bisection, and see "What to check first" below.
 
+**`TESTING-WINDOWS.md` is the ordered script to hand to whoever has a Windows
+machine.** It covers the app as well as these extensions, and it leads with the
+one thing that is a *measurement* rather than a check: the IPC transport cost,
+which the viewer's PNG-encoding default rests on and which nobody has
+reproduced.
+
 ```sh
 cargo check  --target x86_64-pc-windows-msvc     # works from any host
 cargo clippy --target x86_64-pc-windows-msvc -- -D warnings
@@ -123,7 +129,11 @@ In this order, because each rules out everything below it:
 4. **Watch the surrogate.** `dllhost.exe` / `prevhost.exe` appearing in Task
    Manager when a `.hep` is selected means the extension is being hosted and
    the problem is inside it.
-5. **Suspect the GPU.** This renders through `vello-hybrid`, so a surrogate
+5. **Prove the renderer works outside the surrogate first.** `cd
+   ../hephaestus-thumbnailer && cargo run --release -- -s 512 -i some.hep -o
+   t.png` uses the same rasterizer with no shell involved, which separates
+   "the GPU works here" from "the GPU works inside Explorer's sandbox".
+6. **Suspect the GPU.** This renders through `vello-hybrid`, so a surrogate
    with no D3D12 adapter produces nothing. That is the strongest argument for
    the `blend2d` CPU backend the parent crate has a placeholder for, and the
    alternative worth considering is `Windows.Data.Pdf` — Windows has a system
@@ -134,7 +144,11 @@ In this order, because each rules out everything below it:
 
 ## Not built yet
 
-- **Anything verified.** See above.
+- **Anything verified.** See above, and `TESTING-WINDOWS.md`.
+- **A debug channel that is on by default.** `--features diagnostics` routes
+  progress through `OutputDebugStringW`, which DebugView can see from inside a
+  surrogate — the only channel that reaches out of one. Off in a normal build,
+  and the closure form means nothing is formatted when it is off.
 - **A universal / ARM64 build.** `aarch64-pc-windows-msvc` would want its own
   DLL, and Explorer loads the one matching its own architecture.
 - **Installer wiring.** `bundle.windows.nsis.installerHooks` in

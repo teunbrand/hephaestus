@@ -134,6 +134,13 @@ run: `crates/hephaestus-viewer/package-linux.sh` (builds the thumbnailer, then
 the deb and rpm with it and the MIME declaration installed) and
 `package-windows.ps1` (builds the shell-extension DLL, then the NSIS installer
 whose hook `regsvr32`s it).
+
+**`crates/hephaestus-explorer/TESTING-WINDOWS.md` is the script to hand to
+somebody with a Windows machine.** It is ordered so each step rules out the
+ones below it, and it leads with the one open *measurement* in the project
+rather than with the untested code: the IPC transport cost that the viewer's
+per-platform frame-encoding default rests on, taken from an upstream benchmark
+nobody here has reproduced.
 `ui/verify.mjs` is the counterpart to the wasm clients' `verify-dist.mjs`: Node
 has no DOM, so what it checks is the seam that otherwise fails silently — the
 element ids the code looks up, the commands it invokes, the events it listens

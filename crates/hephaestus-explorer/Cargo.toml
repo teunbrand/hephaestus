@@ -33,7 +33,14 @@ features = [
     "Win32_UI_Shell_PropertiesSystem",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Diagnostics_Debug",
 ]
+
+[features]
+# Report what the extensions are doing through `OutputDebugStringW`, which is
+# the only channel that reaches out of Explorer's surrogate process. Off by
+# default; see TESTING-WINDOWS.md.
+diagnostics = []
 
 [profile.release]
 opt-level = 3

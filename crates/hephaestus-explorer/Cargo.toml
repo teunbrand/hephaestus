@@ -1,0 +1,41 @@
+[package]
+name = "hephaestus-explorer"
+version = "0.1.0"
+edition = "2021"
+description = "Windows Explorer shell extensions for hephaestus plot documents."
+license = "MIT"
+repository = "https://github.com/posit-dev/hephaestus"
+publish = false
+rust-version = "1.88"
+
+# Its own workspace, like every crate under `crates/`.
+[workspace]
+
+[lib]
+# A shell extension is an in-process COM server, which is a DLL.
+crate-type = ["cdylib"]
+
+[target.'cfg(windows)'.dependencies]
+hephaestus-thumbnailer = { path = "../hephaestus-thumbnailer" }
+windows-core = "0.61"
+
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

@@ -1,0 +1,48 @@
+[package]
+name = "hephaestus-thumbnailer"
+version = "0.1.0"
+edition = "2021"
+description = "Renders a hephaestus plot document to a thumbnail image."
+license = "MIT"
+repository = "https://github.com/posit-dev/hephaestus"
+publish = false
+# `vello_hybrid` and `parley` declare 1.88, and this build pulls both.
+rust-version = "1.88"
+
+# Its own workspace, like every other crate under `crates/`. See the note in
+# `../../Cargo.toml`.
+[workspace]
+
+# A library *and* a binary, deliberately. The binary is the freedesktop
+# thumbnailer contract, which is a command line; the library is the same
+# rendering without a process boundary, which is what a Windows
+# `IThumbnailProvider` needs — that one is a COM DLL and cannot shell out.
+[lib]
+name = "hephaestus_thumbnailer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hephaestus-thumbnailer"
+path = "src/main.rs"
+
+[dependencies]
+# Read a document, rasterize it, write a PNG. `vello-hybrid` rather than
+# `vello` for the same reason everything else here picks it: no draw-count
+# ceiling, so a dense plot thumbnails at all.
+#
+# Note this needs a GPU, which for a thumbnailer means one adapter
+# initialization *per file* — a file manager runs one process per thumbnail.
+# Measured at ~130 ms on this machine, which is tolerable and is the strongest
+# argument for the `blend2d` CPU backend the parent crate has a placeholder
+# for. See CLAUDE.md.
+hephaestus = { path = "../..", default-features = false, features = [
+    "document-read",
+    "vello-hybrid",
+    "png",
+] }
+thiserror = "2"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = true

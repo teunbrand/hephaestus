@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installerHooks": "packaging/installer-hooks.nsh"
+      }
+    },
+    "resources": {
+      "../hephaestus-explorer/target/x86_64-pc-windows-msvc/release/hephaestus_explorer.dll": "hephaestus_explorer.dll"
+    }
+  }
+}

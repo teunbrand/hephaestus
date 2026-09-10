@@ -1,11 +1,21 @@
-# Both wasm clients are deliberately their own workspaces rather than members
-# of this one. Cargo only honours `[profile]` at a workspace root, so a member
-# could not carry its own size-tuned release profile — the size settings a
-# wasm bundle wants (`opt-level = "z"`, `panic = "abort"`) would have to live
-# here and would then apply to this crate's native release builds, where
-# throughput is the whole point.
+# Every crate under `crates/` is deliberately its own workspace rather than a
+# member of this one. Cargo only honours `[profile]` at a workspace root, so a
+# member could not carry its own tuned release profile — and they want opposite
+# ones. The size settings a wasm bundle wants (`opt-level = "z"`, `panic =
+# "abort"`) would have to live here and would then apply to this crate's native
+# release builds, where throughput is the whole point; the viewer is an
+# application and wants that throughput profile plus a lock file of its own;
+# and the Quick Look extension must keep `panic = "unwind"`, because every one
+# of its FFI entry points catches.
 [workspace]
-exclude = ["crates/hephaestus-wasm", "crates/hephaestus-svg-wasm"]
+exclude = [
+    "crates/hephaestus-wasm",
+    "crates/hephaestus-svg-wasm",
+    "crates/hephaestus-viewer",
+    "crates/hephaestus-quicklook",
+    "crates/hephaestus-thumbnailer",
+    "crates/hephaestus-explorer",
+]
 
 [package]
 name = "hephaestus"

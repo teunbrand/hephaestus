@@ -8,6 +8,8 @@ Repo-level orientation for working in `hephaestus`. Architecture, module map, an
 
 The crate ships two API levels in the same source tree: a low-level scene API (`SceneBuilder` + primitives + layout) and a high-level plot API (`plot::*` — geoms, scales, and the `PlotComposition` orchestrator) built on top of it. See `src/CLAUDE.md` for the split and the rules that govern it.
 
+Six consumers live under `crates/`, each its own workspace: two wasm clients that render a `.hep` document in a browser (`hephaestus-wasm` rasterizes, `hephaestus-svg-wasm` emits markup), `hephaestus-viewer`, a Tauri desktop app for opening documents from a file manager, and three sets of OS shell integrations that give a `.hep` a preview and an icon in the system's file browser — `hephaestus-quicklook` (macOS), `hephaestus-thumbnailer` (Linux, and the shared renderer) and `hephaestus-explorer` (Windows).
+
 ## Commands
 
 ```sh
@@ -75,6 +77,67 @@ Its `verify-dist.mjs` renders `www/document.hep` end to end — decode, solve,
 shape, emit — because this client needs neither a DOM nor an adapter to draw.
 Populate the fixture with `cargo run --example document_save --features
 document-write` and copy it into `www/`.
+
+The desktop viewer is a fourth workspace, and the only one that is an
+application rather than a library or a bundle:
+
+```sh
+cd crates/hephaestus-viewer
+cargo clippy --all-targets -- -D warnings
+cargo test                       # header, reload classifier, SVG/PDF export — no GPU
+cargo test --test render_smoke   # frames and raster export — needs a wgpu adapter
+node ui/verify.mjs               # the frontend, and its seam with Rust
+cargo run -- ../../examples/document.hep   # a document straight from the command line
+cargo tauri build                # the bundle; also the only way to test double-click
+```
+
+Neither `cargo build` nor the tests need the Tauri CLI — the frontend is plain
+ES modules with no build step — and none of it needs the parent workspace.
+
+### The three OS shell integrations
+
+A `.hep` gets a preview and an icon in each platform's file browser, and the
+three cost wildly different amounts. They share one renderer —
+`hephaestus-thumbnailer`'s library — and differ entirely in how the OS is told
+about it:
+
+| | preview | thumbnail | verified |
+| --- | --- | --- | --- |
+| macOS | `QLPreviewProvider` | `QLThumbnailProvider` | yes, in Finder |
+| Linux | nothing pluggable exists | a `.thumbnailer` data file | renders; not seen in a file manager |
+| Windows | `IPreviewHandler` — **reflows** | `IThumbnailProvider` | type-checks only |
+
+Two asymmetries worth knowing. **Linux is trivial**: a file naming a command
+line, no plugin ABI, no signing — which is also why it is the only one whose
+output can be checked from anywhere. **Windows is the only one that can
+reflow**, because a preview handler gets a window and resize callbacks where
+Quick Look's data reply is a fixed-size document handed over once.
+
+Packaging the app *with* its macOS Quick Look extension is a fifth workspace's
+worth of work and one script:
+
+```sh
+cd crates/hephaestus-quicklook && cargo test --release && ./build-appex.sh
+cd ../hephaestus-viewer && ./package-macos.sh "Apple Development: …"
+```
+
+`package-macos.sh` drives `cargo tauri build`, then does the parts the bundler
+cannot: build the two `.appex` bundles — a space-bar preview and a Finder
+thumbnail — embed them, and re-sign **inside-out**. `qlmanage` verifies neither
+on macOS 26 (it crashes on Apple's own data-based extensions), so the preview
+is checked by pressing space in Finder and the thumbnail by
+`crates/hephaestus-quicklook/verify-thumbnail.swift`, which writes a PNG. Both
+are written up in `crates/hephaestus-quicklook/CLAUDE.md`.
+
+The other two platforms have their own scripts, neither of which anybody has
+run: `crates/hephaestus-viewer/package-linux.sh` (builds the thumbnailer, then
+the deb and rpm with it and the MIME declaration installed) and
+`package-windows.ps1` (builds the shell-extension DLL, then the NSIS installer
+whose hook `regsvr32`s it).
+`ui/verify.mjs` is the counterpart to the wasm clients' `verify-dist.mjs`: Node
+has no DOM, so what it checks is the seam that otherwise fails silently — the
+element ids the code looks up, the commands it invokes, the events it listens
+for.
 
 `crates/hephaestus-wasm/bench/README.md` covers the startup measurements, what
 they mean and how to reproduce them. The headline: with a natively-rendered
@@ -165,6 +228,11 @@ tag matches the version they are about to publish.
    A GitHub Release is not required — `push: tags` is the trigger. Creating
    one works too, since it pushes a tag.
 
+**`crates/hephaestus-viewer` is not part of a release.** It is an application
+rather than a view onto this crate, `release.yml` does not know about it, and
+it carries its own version — so it is deliberately absent from the lockstep
+below. Bumping it is a separate decision.
+
 ### One version, three manifests
 
 The crate's version and the two npm packages' live in separate files, and every
@@ -204,6 +272,10 @@ See `crates/hephaestus-wasm/CLAUDE.md` for the npm side in detail.
 - **Per-module `CLAUDE.md` files** under `src/scene/`, `src/backend/`, `src/backend/vello/`, `src/backend/hybrid/`, `src/layout/`, `src/composition/`, `src/document/`, `src/primitives/`, `src/plot/`, `src/plot/geom/`, `src/plot/theme/`, `src/scales/`, `src/image/`, `src/text/`, `src/text/rich/`, `src/window/`.
 - **`crates/hephaestus-wasm/CLAUDE.md`** — the wasm render client: the Rust/JS split, why WebGPU is required, and why fonts are the thing that surprises people.
 - **`crates/hephaestus-svg-wasm/CLAUDE.md`** — the wasm SVG client: the same documents with no rasteriser, what dropping it deletes, why picking is the DOM, and the one font trap that is this client's alone.
+- **`crates/hephaestus-viewer/CLAUDE.md`** — the desktop viewer: why one thread owns every document and one window shows one document, the frame wire format and the transport risk behind it, and the four ways a file gets opened.
+- **`crates/hephaestus-quicklook/CLAUDE.md`** — the macOS Quick Look extensions: how one renderer-free PDF build becomes both a Finder preview and a thumbnail, the `Info.plist` keys that are required and undocumented, and why `qlmanage` verifies neither.
+- **`crates/hephaestus-thumbnailer/CLAUDE.md`** — the Linux thumbnailer, which is a data file naming a command line and therefore the cheapest shell integration by a wide margin; also the renderer the Windows extensions share.
+- **`crates/hephaestus-explorer/CLAUDE.md`** — the Windows Explorer extensions: a thumbnail handler and the one preview in the repo that can *reflow*, plus the two DIB conversions that fail silently. Type-checked, never run.
 
 ## Help / feedback
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The one hand-written piece of the file-association story. Tauri's Linux
+  bundlers write the `.desktop` entry's `MimeType=` from
+  `bundle.fileAssociations`, but nothing declares what the MIME type *is* —
+  so without this the desktop has a handler for a type it cannot recognize,
+  and a `.hep` shows up as `application/octet-stream`.
+
+  The glob is the fallback; the magic is what identifies a document that has
+  been renamed. `HEPHPLOT` is the container's ASCII magic at offset 0.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-hephaestus-plot">
+    <comment>Hephaestus plot document</comment>
+    <glob pattern="*.hep"/>
+    <magic priority="60">
+      <match type="string" value="HEPHPLOT" offset="0"/>
+    </magic>
+  </mime-type>
+</mime-info>

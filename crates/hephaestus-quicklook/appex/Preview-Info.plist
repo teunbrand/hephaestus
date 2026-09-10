@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Hephaestus Plot Preview</string>
+  <key>CFBundleExecutable</key>
+  <string>HephaestusQuickLook</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.posit.hephaestus.viewer.quicklook</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>HephaestusQuickLook</string>
+  <!-- An appex, not an app. Launch Services refuses to load it otherwise. -->
+  <key>CFBundlePackageType</key>
+  <string>XPC!</string>
+  <!-- Required, and its absence is not diagnosed as a missing key: without it
+       ExtensionFoundation throws NSInvalidArgumentException ("key cannot be
+       nil") from -[EXConcreteExtension
+       makeExtensionContextAndXPCConnectionForRequest:error:] while setting up
+       the XPC connection, which surfaces as the *host* crashing rather than as
+       anything about this bundle. Xcode writes it for you, and assembling an
+       appex by hand is how you find out it matters. -->
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>MacOSX</string>
+  </array>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>0.1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>MIT</string>
+  <key>NSExtension</key>
+  <dict>
+    <!-- The data-based preview point. The older `com.apple.quicklook.preview`
+         *view* extensions use the same identifier; what makes this the data
+         flavour is subclassing QLPreviewProvider. -->
+    <key>NSExtensionPointIdentifier</key>
+    <string>com.apple.quicklook.preview</string>
+    <!-- Resolved with NSClassFromString, so it must be the Objective-C name.
+         The class carries @objc(PreviewProvider) to make that a plain name
+         rather than Swift's mangled one. Getting this wrong fails silently. -->
+    <key>NSExtensionPrincipalClass</key>
+    <string>PreviewProvider</string>
+    <key>NSExtensionAttributes</key>
+    <dict>
+      <!-- THE key that makes this work, and it is absent from Apple's own
+           documentation of the API. Quick Look supports two kinds of preview
+           extension behind one extension point: view-based, where the
+           principal class is an NSViewController, and data-based, where it
+           subclasses QLPreviewProvider and hands back bytes. This flag is how
+           Quick Look tells them apart.
+
+           Omit it and the default is view-based: Quick Look asks our
+           QLPreviewProvider for a view controller, gets nothing, and reports
+           that the file "did not produce any preview" — without ever calling
+           providePreview, with no error and nothing in the log. Found by
+           reading the Info.plist of a shipping extension
+           (Tips.app/Contents/PlugIns/HelpViewer-Quicklook.appex), which
+           declares it as False for the view-based case. -->
+      <key>QLIsDataBasedPreview</key>
+      <true/>
+      <!-- Must match the UTI the host app declares in
+           UTExportedTypeDeclarations, or nothing ever routes here. -->
+      <key>QLSupportedContentTypes</key>
+      <array>
+        <string>dev.posit.hephaestus.plot</string>
+      </array>
+      <key>QLSupportsSearchableItems</key>
+      <false/>
+    </dict>
+  </dict>
+</dict>
+</plist>

@@ -1,0 +1,46 @@
+[package]
+name = "hephaestus-quicklook"
+version = "0.1.0"
+edition = "2021"
+description = "Renders a hephaestus plot document to PDF for a macOS Quick Look preview."
+license = "MIT"
+repository = "https://github.com/posit-dev/hephaestus"
+publish = false
+# The renderer-free document reader compiles on the oldest rustc this repo
+# supports, and nothing here raises that.
+rust-version = "1.86"
+
+# Its own workspace, like every other crate under `crates/`. See the note in
+# `../../Cargo.toml`.
+[workspace]
+
+[lib]
+# A Quick Look preview extension is a Swift bundle, so this is linked into it
+# rather than loaded. `staticlib` also keeps the appex a single executable with
+# nothing to find at runtime, which matters inside a sandbox.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+# The whole point: `document-read` + `pdf` needs no GPU, no wgpu and no
+# rasterizer at all — the one configuration that can turn a `.hep` into a
+# picture inside a sandboxed extension with a hard time budget. `pdf` also
+# embeds every glyph it draws, so a preview looks right on a machine that has
+# none of the plot's fonts.
+#
+# Deliberately absent: every rasterizing backend (an appex has no business
+# opening a GPU device), `png` (a PDF takes raw samples; only a *bitmap* colour
+# glyph would want it, and a plot preview can lose emoji), and
+# `document-write`.
+hephaestus = { path = "../..", default-features = false, features = [
+    "document-read",
+    "pdf",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+# A preview has a few hundred milliseconds before Quick Look gives up, and a
+# panic in an extension takes the whole preview host down. Every entry point
+# catches unwinds, so unwinding has to stay available.
+panic = "unwind"
+strip = true

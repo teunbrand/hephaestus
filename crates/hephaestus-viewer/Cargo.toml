@@ -1,0 +1,65 @@
+[package]
+name = "hephaestus-viewer"
+version = "0.1.0"
+edition = "2021"
+description = "Desktop viewer for hephaestus plot documents."
+license = "MIT"
+repository = "https://github.com/posit-dev/hephaestus"
+publish = false
+# Anything pulling `vello_hybrid` or `parley` in declares 1.88, and this build
+# pulls both.
+rust-version = "1.88"
+
+# Its own workspace, not a member of the one above it — same reason the two
+# wasm clients are, arrived at from the opposite direction. Profiles are only
+# honoured at a workspace root, and this one is an application: it wants the
+# throughput settings below, which are exactly what the wasm bundles must not
+# inherit. See the note in `../../Cargo.toml`.
+[workspace]
+
+[dependencies]
+# What a viewer needs: read documents, rasterize them, and write every format
+# it can export to. `vello-hybrid` rather than `vello` because it puts no
+# ceiling on draw count, which is the whole reason a 100k-mark plot renders at
+# all; it implies `png`, which the raster export and the PNG frame encoding
+# both want anyway. `svg` and `pdf` add no crate that is not already in the
+# tree (`skrifa` via parley, `flate2` via png), and `jpeg` / `tiff` / `webp`
+# cost only their codecs, so export covers every format the crate writes.
+#
+# Deliberately absent: `vello` (a second rasterizer, with a draw cap),
+# `window` / `canvas` / `webgl` (Tauri owns the window), `document-write`
+# (a viewer reads; see the theme-editor note in CLAUDE.md), `google-fonts`
+# (a desktop enumerates its own).
+hephaestus = { path = "../..", default-features = false, features = [
+    "document-read",
+    "vello-hybrid",
+    "png",
+    "jpeg",
+    "tiff",
+    "webp",
+    "svg",
+    "pdf",
+] }
+
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# The `sync` half alone: the commands await a oneshot from the render thread,
+# and Tauri already brings a runtime.
+tokio = { version = "1", default-features = false, features = ["sync"] }
+
+# Watch-and-reload. The debouncer is the useful layer: an editor's save is
+# several events, and `FileIdMap` follows a file across the rename an atomic
+# save performs.
+notify-debouncer-full = "0.7"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"

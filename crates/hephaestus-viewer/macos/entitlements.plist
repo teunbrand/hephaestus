@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- The app is deliberately *not* sandboxed. It opens documents from
+       anywhere the user points it at, watches their parent directories for
+       changes, and writes exports wherever a save dialog says — all of which a
+       sandbox would need a permission for, and the file-watching one has no
+       clean answer. The Quick Look extension inside it *is* sandboxed, which
+       is mandatory there and unrelated to this.
+
+       So this file exists for the hardened runtime rather than for a sandbox:
+       notarization requires it, and the two exceptions below are what a
+       hardened GPU app actually needs. -->
+
+  <!-- wgpu loads Metal and the system's driver bundles, which are not signed
+       by us. Without this the hardened runtime refuses them and no adapter is
+       found — which surfaces as "cannot rasterize", not as a signing error. -->
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>

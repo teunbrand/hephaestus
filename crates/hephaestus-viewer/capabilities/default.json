@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Every document window talks to its own commands and listens for the events the render thread emits. Windows are created at runtime, one per document, so the pattern matches their generated labels rather than a fixed one. Nothing else: the file dialogs are opened from Rust, so no plugin permission is needed for them.",
+  "windows": [
+    "doc-*"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}

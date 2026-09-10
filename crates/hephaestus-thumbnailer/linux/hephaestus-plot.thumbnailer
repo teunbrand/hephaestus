@@ -1,0 +1,16 @@
+# Installed to /usr/share/thumbnailers/. This file *is* the integration: a
+# file manager reads it, sees a MIME type it has a thumbnailer for, and runs
+# the command. There is no plugin ABI, no registration step and no signing.
+#
+# Read by GNOME Files (via gnome-desktop's thumbnail factory) and by Thunar
+# (via tumbler). NOT read by KDE's Dolphin, which uses its own C++ KIO
+# thumbnail plugins.
+#
+# The MIME type has to be one the system recognizes, which is what
+# `hephaestus-viewer/packaging/hephaestus-viewer.xml` declares — including a
+# magic rule on the container's `HEPHPLOT` bytes, so a renamed file still
+# gets a thumbnail.
+[Thumbnailer Entry]
+TryExec=hephaestus-thumbnailer
+Exec=hephaestus-thumbnailer -s %s -i %i -o %o
+MimeType=application/x-hephaestus-plot;

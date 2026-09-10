@@ -1,0 +1,405 @@
+/* Chrome only. Everything inside the canvas is the plot's own theme, which
+   follows the document rather than the desktop — so the two are toggled
+   independently and the "Invert" button is about the plot, not about this.
+
+   The aim here is to stop looking like a web page. Four things do most of
+   that work, and none of them is a colour choice: `color-scheme` so the
+   platform draws its own scrollbars and controls, the `AccentColor` system
+   keyword so accents are the one the user actually chose, the system font
+   stack with the platform's own smoothing, and a window with no tab strip in
+   it — on macOS AppKit draws the tab bar above this, since every window
+   carries the same tabbing identifier. */
+
+:root {
+  /* Lets the platform draw form controls, scrollbars and focus rings for the
+     active appearance, rather than us approximating them. */
+  color-scheme: light dark;
+
+  --bar: #f6f6f6;
+  --bar-edge: #d5d5d5;
+  --ink: #1d1d1f;
+  --ink-dim: #6e6e73;
+  --stage: #ececec;
+  --panel: #ffffff;
+  --field-edge: #c4c4c6;
+  --control: #ffffff;
+  --warn-bg: #fdf3e3;
+  --warn-ink: #7a4a05;
+  --warn-edge: #e3c07a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bar: #2d2d2d;
+    --bar-edge: #1a1a1a;
+    --ink: #f5f5f7;
+    --ink-dim: #98989d;
+    --stage: #1e1e1e;
+    --panel: #2d2d2d;
+    --field-edge: #4a4a4c;
+    --control: #3a3a3c;
+    --warn-bg: #3a2e18;
+    --warn-ink: #f0d9a8;
+    --warn-edge: #6b5528;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  /* `-apple-system` first so macOS gets SF with its optical sizes; the rest
+     cover Windows and Linux. */
+  font:
+    13px/1.4 -apple-system,
+    BlinkMacSystemFont,
+    system-ui,
+    'Segoe UI',
+    Cantarell,
+    sans-serif;
+  color: var(--ink);
+  background: var(--stage);
+  /* Native text rendering weight. Without it WebKit renders chrome text
+     noticeably heavier than every other app on the screen. */
+  -webkit-font-smoothing: antialiased;
+  /* Nothing here is a document to select, and a stray text selection in a
+     toolbar is a browser tell. */
+  -webkit-user-select: none;
+  user-select: none;
+  /* No rubber-band past the edges: an app window does not bounce. */
+  overscroll-behavior: none;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* ─── The toolbar ──────────────────────────────────────────────────────── */
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px;
+  background: var(--bar);
+  border-bottom: 1px solid var(--bar-edge);
+  /* Dragging the window by its toolbar, which every native app allows. */
+  -webkit-app-region: drag;
+}
+
+#actions,
+#bar > button {
+  -webkit-app-region: no-drag;
+}
+
+#actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#spacer {
+  flex: 1 1 auto;
+}
+
+/* A macOS push button: 6px radius since Big Sur, a hairline border, and a
+   control-coloured face rather than a flat fill. */
+button {
+  padding: 4px 11px;
+  border: 1px solid var(--field-edge);
+  border-radius: 6px;
+  background: var(--control);
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+button:disabled {
+  opacity: 0.4;
+}
+
+button:not(:disabled):active {
+  filter: brightness(0.94);
+}
+
+/* The platform's accent, not one we picked. The plain value is a fallback for
+   engines without the system keyword; the second declaration wins where it is
+   supported and is dropped where it is not. */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid #0a64d2;
+  outline: 2px solid AccentColor;
+  outline-offset: 1px;
+}
+
+#dark[aria-pressed='true'] {
+  border-color: #0a64d2;
+  border-color: AccentColor;
+  box-shadow: inset 0 0 0 1px #0a64d2;
+  box-shadow: inset 0 0 0 1px AccentColor;
+}
+
+/* ─── The stage ────────────────────────────────────────────────────────── */
+
+#stage {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The canvas is sized entirely in CSS. Its backing store is assigned only
+   when pixels for that size have arrived — see `frame.js` — so a resize
+   stretches the previous frame instead of clearing to white. */
+#plot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#plot[hidden] {
+  display: none;
+}
+
+#empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+#empty[hidden] {
+  display: none;
+}
+
+#empty .headline {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+#empty p {
+  margin: 0;
+}
+
+#empty button {
+  margin-top: 10px;
+}
+
+#banner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--warn-edge);
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: var(--warn-ink);
+  font-size: 12px;
+  white-space: pre-wrap;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+
+#banner[hidden] {
+  display: none;
+}
+
+#banner-text {
+  flex: 1 1 auto;
+}
+
+#banner-close {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+
+#drop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  background: rgb(10 100 210 / 10%);
+  outline: 3px dashed #0a64d2;
+  outline: 3px dashed AccentColor;
+  outline-offset: -8px;
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+#drop[hidden] {
+  display: none;
+}
+
+#toast {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 70vw;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: rgb(30 30 30 / 92%);
+  color: #f5f5f7;
+  font-size: 12px;
+  white-space: pre-wrap;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 25%);
+}
+
+#toast[hidden] {
+  display: none;
+}
+
+/* ─── The export sheet ─────────────────────────────────────────────────── */
+
+/* A macOS modal is a sheet: it drops from the top edge of its window rather
+   than appearing centred, and its corners are square where it meets the
+   titlebar. */
+#export-dialog {
+  margin: 0 auto;
+  border: 0;
+  border-radius: 0 0 10px 10px;
+  padding: 0;
+  background: var(--panel);
+  color: var(--ink);
+  min-width: 340px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 30%);
+  animation: sheet-drop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+@keyframes sheet-drop {
+  from {
+    transform: translateY(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #export-dialog {
+    animation: none;
+  }
+}
+
+#export-dialog::backdrop {
+  background: rgb(0 0 0 / 22%);
+}
+
+#export-form {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+#export-form h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#export-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+#export-form label.check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+#export-form .row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.1fr;
+  gap: 8px;
+}
+
+#export-form input,
+#export-form select {
+  padding: 4px 6px;
+  border: 1px solid var(--field-edge);
+  border-radius: 5px;
+  background: var(--control);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* Left to the platform: a native checkbox in the user's accent beats anything
+   drawn here. */
+#export-form input[type='checkbox'] {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: auto;
+}
+
+#export-form fieldset {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--field-edge);
+  border-radius: 6px;
+}
+
+#export-form fieldset[hidden],
+#export-form label[hidden] {
+  display: none;
+}
+
+#export-form legend {
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+#export-note {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+#export-form menu {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+}
+
+/* The default button is accent-filled on macOS, which is also what tells you
+   Return will activate it. */
+#export-go {
+  border-color: transparent;
+  background: #0a64d2;
+  background: AccentColor;
+  color: #ffffff;
+  color: AccentColorText;
+  font-weight: 500;
+}

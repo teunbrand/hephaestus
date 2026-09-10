@@ -1,0 +1,62 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Hephaestus Viewer",
+  "identifier": "dev.posit.hephaestus.viewer",
+  "build": {
+    "frontendDist": "./ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "hep"
+        ],
+        "name": "Hephaestus plot document",
+        "description": "Hephaestus plot document",
+        "mimeType": "application/x-hephaestus-plot",
+        "role": "Viewer",
+        "rank": "Owner",
+        "exportedType": {
+          "identifier": "dev.posit.hephaestus.plot",
+          "conformsTo": [
+            "public.image"
+          ]
+        },
+        "contentTypes": [
+          "dev.posit.hephaestus.plot"
+        ]
+      }
+    ],
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/share/mime/packages/hephaestus-viewer.xml": "packaging/hephaestus-viewer.xml",
+          "/usr/share/thumbnailers/hephaestus-plot.thumbnailer": "../hephaestus-thumbnailer/linux/hephaestus-plot.thumbnailer",
+          "/usr/bin/hephaestus-thumbnailer": "../hephaestus-thumbnailer/target/release/hephaestus-thumbnailer"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/share/mime/packages/hephaestus-viewer.xml": "packaging/hephaestus-viewer.xml",
+          "/usr/share/thumbnailers/hephaestus-plot.thumbnailer": "../hephaestus-thumbnailer/linux/hephaestus-plot.thumbnailer",
+          "/usr/bin/hephaestus-thumbnailer": "../hephaestus-thumbnailer/target/release/hephaestus-thumbnailer"
+        }
+      }
+    }
+  }
+}

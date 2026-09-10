@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hephaestus Viewer</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!--
+      One window, one document. There is no tab strip here on purpose: on
+      macOS every window carries the same tabbing identifier, so AppKit draws
+      a real tab bar above this and the window title is the tab's label.
+    -->
+    <header id="bar">
+      <div id="actions">
+        <button id="open" type="button" title="Open a plot document (⌘O)">Open…</button>
+        <button id="export" type="button" disabled title="Export the plot (⌘E)">
+          Export…
+        </button>
+      </div>
+      <div id="spacer"></div>
+      <button id="dark" type="button" aria-pressed="false" title="Invert the theme (⇧⌘I)">
+        Invert
+      </button>
+    </header>
+
+    <main id="stage">
+      <canvas id="plot"></canvas>
+
+      <div id="empty">
+        <p class="headline">No document open</p>
+        <p>Drop a <code>.hep</code> file here, or open one.</p>
+        <button id="open-empty" type="button">Open…</button>
+      </div>
+
+      <div id="banner" role="status" hidden>
+        <span id="banner-text"></span>
+        <button id="banner-close" type="button" aria-label="Dismiss">×</button>
+      </div>
+
+      <div id="drop" hidden><span>Drop to open</span></div>
+    </main>
+
+    <dialog id="export-dialog">
+      <form id="export-form" method="dialog">
+        <h2>Export</h2>
+
+        <label>
+          Format
+          <select id="format">
+            <option value="png">PNG image</option>
+            <option value="jpeg">JPEG image</option>
+            <option value="tiff">TIFF image</option>
+            <option value="webp">WebP image</option>
+            <option value="svg">SVG drawing</option>
+            <option value="pdf">PDF document</option>
+          </select>
+        </label>
+
+        <div class="row">
+          <label>
+            Width
+            <input id="width" type="number" min="0.01" step="0.01" value="7" />
+          </label>
+          <label>
+            Height
+            <input id="height" type="number" min="0.01" step="0.01" value="5" />
+          </label>
+          <label>
+            Unit
+            <select id="unit">
+              <option value="in">inches</option>
+              <option value="mm">mm</option>
+              <option value="pt">points</option>
+              <option value="px">pixels</option>
+            </select>
+          </label>
+        </div>
+
+        <label id="dpi-field">
+          Resolution (dpi)
+          <input id="dpi" type="number" min="1" max="2400" step="1" value="300" />
+        </label>
+
+        <label id="quality-field" hidden>
+          JPEG quality
+          <input id="quality" type="number" min="1" max="100" step="1" value="90" />
+        </label>
+
+        <fieldset id="svg-fields" hidden>
+          <legend>SVG text</legend>
+          <label class="check">
+            <input id="outline-text" type="checkbox" />
+            Convert text to outlines
+          </label>
+          <label class="check">
+            <input id="embed-fonts" type="checkbox" />
+            Embed fonts
+          </label>
+        </fieldset>
+
+        <p id="export-note"></p>
+
+        <menu>
+          <button id="export-cancel" type="button">Cancel</button>
+          <button id="export-go" type="submit" value="export">Export…</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <div id="toast" role="status" hidden></div>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

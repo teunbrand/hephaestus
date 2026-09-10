@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleDisplayName</key>
+  <string>Hephaestus Plot Thumbnail</string>
+  <key>CFBundleExecutable</key>
+  <string>HephaestusThumbnail</string>
+  <key>CFBundleIdentifier</key>
+  <string>dev.posit.hephaestus.viewer.thumbnail</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>HephaestusThumbnail</string>
+  <!-- An appex, not an app. -->
+  <key>CFBundlePackageType</key>
+  <string>XPC!</string>
+  <!-- Required. Its absence is not diagnosed as a missing key — see the
+       preview bundle's plist and CLAUDE.md. -->
+  <key>CFBundleSupportedPlatforms</key>
+  <array>
+    <string>MacOSX</string>
+  </array>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>0.1.0</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>12.0</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>MIT</string>
+  <key>NSExtension</key>
+  <dict>
+    <!-- A different extension point from the preview, which is why this is a
+         second bundle: an appex declares exactly one. -->
+    <key>NSExtensionPointIdentifier</key>
+    <string>com.apple.quicklook.thumbnail</string>
+    <key>NSExtensionPrincipalClass</key>
+    <string>ThumbnailProvider</string>
+    <key>NSExtensionAttributes</key>
+    <dict>
+      <!-- Must match the UTI the host app declares in
+           UTExportedTypeDeclarations. There is no `QLIsDataBasedPreview`
+           counterpart here: thumbnail providers have only one flavour. -->
+      <key>QLSupportedContentTypes</key>
+      <array>
+        <string>dev.posit.hephaestus.plot</string>
+      </array>
+      <!-- Render at any size Finder asks for, including the small icons in
+           list view. A plot is vector until this rasterizes it, so there is no
+           size below which the answer stops being meaningful. -->
+      <key>QLThumbnailMinimumDimension</key>
+      <integer>0</integer>
+    </dict>
+  </dict>
+</dict>
+</plist>

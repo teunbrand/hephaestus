@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Not optional: the sandbox is mandatory for a Quick Look extension, and
+       an unsandboxed one is refused rather than warned about. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+  <!-- Quick Look hands the extension the file it is previewing; this is what
+       lets it be read. Nothing else is needed — the renderer touches no
+       network, writes nothing, and opens no GPU device. -->
+  <key>com.apple.security.files.user-selected.read-only</key>
+  <true/>
+</dict>
+</plist>
